@@ -395,8 +395,10 @@ footer{max-width:1220px;margin:0 auto;padding:22px 16px 40px;color:var(--ink3);f
       <div class="row" style="margin-bottom:8px">
         <span class="badge" id="exportHint"></span>
         <span class="spacer"></span>
+        <button class="btn ghost" id="btnPreflight"><span class="ja">投入前チェック</span><span class="en">Preflight</span></button>
         <button class="btn" id="btnCopy"><span class="ja">クリップボードにコピー</span><span class="en">Copy to clipboard</span></button>
       </div>
+      <div id="preflightOut" style="margin-bottom:8px"></div>
       <pre class="out" id="exportOut"></pre>
       <div class="note" style="margin-top:10px">
         <span class="ja"><b>投入は人手で。</b> 生成した <code class="mono">tasks.json</code> は <code class="mono">tmp/scheduler/tasks.json</code> を<b>上書き</b>する。既存タスクがある場合は必ずバックアップを取り、内容を目視してから置き換えること。本ダッシュボードから削除系 API は一切呼ばない。</span>
@@ -469,6 +471,34 @@ footer{max-width:1220px;margin:0 auto;padding:22px 16px 40px;color:var(--ink3);f
     <div class="sec-head"><h2><span class="ja">タスク別 月次負荷</span><span class="en">Monthly load by task</span></h2></div>
     <div class="tablewrap"><table><thead><tr id="cthead"></tr></thead><tbody id="ctbody"></tbody></table></div>
   </div>
+</section>
+
+<!-- ============================ TAB 7: RUNBOOK ============================ -->
+<section id="tab-runbook" role="tabpanel" hidden>
+  <div class="sec">
+    <div class="sec-head">
+      <h2><span class="ja">現地実行ランブック（PowerShell）</span><span class="en">On-site runbook (PowerShell)</span></h2>
+      <span class="hint ja">このダッシュボードから届かない操作 — 実機での取得・起動・投入・常駐化 — をコピー1回で終わる形にしたもの。下の値を入れるとコマンドに反映される。</span>
+      <span class="hint en">The steps this dashboard cannot reach — fetching, starting, applying and keeping the host alive on your own machine — as blocks you copy once. The values below are substituted into every command.</span>
+    </div>
+    <div class="panel">
+      <div class="row" style="align-items:flex-end;gap:14px">
+        <label class="fld" style="flex:1 1 230px"><span class="ja">リポジトリのパス</span><span class="en">Repository path</span>
+          <input type="text" id="envRepo" spellcheck="false"></label>
+        <label class="fld"><span class="ja">ホスト</span><span class="en">Host</span>
+          <input type="text" id="envHost" style="width:130px" spellcheck="false"></label>
+        <label class="fld"><span class="ja">ポート</span><span class="en">Port</span>
+          <input type="text" id="envPort" style="width:92px" spellcheck="false"></label>
+        <label class="fld" style="flex:1 1 220px"><span class="ja">ブランチ</span><span class="en">Branch</span>
+          <input type="text" id="envBranch" spellcheck="false"></label>
+      </div>
+      <div class="note info" style="margin-top:12px">
+        <span class="ja"><b>ポートは推測しない。</b> agent-zero は <code class="mono">--port</code> 引数 → <code class="mono">.env</code> の <code class="mono">WEB_UI_PORT</code> の順で解決する（runtime.py:132）。ブロック2が実機の <code class="mono">.env</code> と待受ポートを読み、実測値で URL を組み立てる。上の欄は控えとして使う。</span>
+        <span class="en"><b>Never guess the port.</b> agent-zero resolves it from <code class="mono">--port</code>, then <code class="mono">WEB_UI_PORT</code> in <code class="mono">.env</code> (runtime.py:132). Block 2 reads the real <code class="mono">.env</code> and the listening socket and builds the URL from what it finds; the field above is only a fallback.</span>
+      </div>
+    </div>
+  </div>
+  <div class="sec" id="runbook"></div>
 </section>
 </main>
 
@@ -622,7 +652,8 @@ const TABS = [
   {id:"orch",      n:"03", ja:"編成",         en:"Orchestration"},
   {id:"migration", n:"04", ja:"移行",         en:"Migration"},
   {id:"safety",    n:"05", ja:"安全運用",     en:"Safety"},
-  {id:"cost",      n:"06", ja:"コスト",       en:"Cost"}
+  {id:"cost",      n:"06", ja:"コスト",       en:"Cost"},
+  {id:"runbook",   n:"07", ja:"現地実行",     en:"Runbook"}
 ];
 
 /* ---------- 3. STATE ---------- */
@@ -632,6 +663,7 @@ const DEFAULTS = {
   conc:2, step:10,
   cost:{pin:"", pout:"", fx:"", tl:8000, tm:30000, th:120000},
   filters:{freq:"all", tier:"all", flag:"all"}, q:"",
+  env:{repo:"C:\\agent-zero", host:"127.0.0.1", port:"50001", branch:"claude/task-automation-dashboard-gvoy32"},
   sort:{key:"time", dir:1}, exportKind:"tasks"
 };
 let state = structuredClone(DEFAULTS);
@@ -962,10 +994,25 @@ const COLS = [
   {k:"", ja:"ゲート", en:"Gates"},
   {k:"", ja:"確度", en:"Confidence"}
 ];
+const LIVE_COLS = [{ja:"状態",en:"State"},{ja:"前回実行",en:"Last run"},{ja:"次回",en:"Next run"}];
+function liveRowFor(t){ return (live.tasks || []).find(x => x.name === t.ja) || null; }
+function fmtStamp(iso){
+  if(!iso) return "—";
+  const d = new Date(iso);
+  if(!Number.isFinite(d.getTime())) return "—";
+  return `${pad(d.getMonth()+1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function stateBadge(st){
+  if(!st) return `<span style="color:var(--ink3)">—</span>`;
+  const cls = st==="error" ? "crit" : st==="running" ? "info" : st==="disabled" ? "warn" : "ok";
+  return `<span class="badge ${cls}">${st}</span>`;
+}
 function renderTable(){
   renderFilters();
+  const showLive = !!(live.ok && live.tasks);
   $("#thead").innerHTML = COLS.map(c =>
-    `<th ${c.sort?`class="sortable" data-k="${c.k}"`:""} ${c.w?`style="width:${c.w}"`:""}>${c[currentLang]}${c.sort&&state.sort.key===c.k?(state.sort.dir>0?" ▲":" ▼"):""}</th>`).join("");
+    `<th ${c.sort?`class="sortable" data-k="${c.k}"`:""} ${c.w?`style="width:${c.w}"`:""}>${c[currentLang]}${c.sort&&state.sort.key===c.k?(state.sort.dir>0?" ▲":" ▼"):""}</th>`).join("")
+    + (showLive ? LIVE_COLS.map(c => `<th>${c[currentLang]}</th>`).join("") : "");
   $("#thead").querySelectorAll("th.sortable").forEach(th => th.onclick = () => {
     if(state.sort.key===th.dataset.k) state.sort.dir *= -1; else { state.sort.key = th.dataset.k; state.sort.dir = 1; }
     save(); renderTable();
@@ -983,6 +1030,9 @@ function renderTable(){
       <td><select class="cellsel" data-runner="${t.id}">${Object.keys(RUNNERS).map(k=>`<option value="${k}" ${t.runner===k?"selected":""}>${RUNNERS[k][currentLang]}</option>`).join("")}</select></td>
       <td>${t.gates.length ? t.gates.map(g=>`<span class="badge ${g==="web"?"":"crit"}">${GATES[g][currentLang]}</span>`).join(" ") : `<span style="color:var(--ink3)">—</span>`}</td>
       <td>${t.conf?`<span class="badge ok">${currentLang==="en"?"measured":"実測"}</span>`:`<span class="badge warn">${currentLang==="en"?"proposed":"提案"}</span>`}</td>
+      ${showLive ? (r => `<td>${stateBadge(r && r.state)}</td>
+        <td class="mono" style="font-size:11.5px">${fmtStamp(r && r.last_run)}</td>
+        <td class="mono" style="font-size:11.5px">${fmtStamp(r && r.next_run)}</td>`)(liveRowFor(t)) : ""}
     </tr>`).join("");
   const tb = $("#tbody");
   tb.querySelectorAll("tr").forEach(tr => tr.onclick = e => {
@@ -1289,7 +1339,9 @@ function renderExport(){
   $("#exportPicker").innerHTML = EXPORTS.map(e =>
     `<button class="chip" data-x="${e.k}" aria-pressed="${state.exportKind===e.k}">${e[currentLang]}</button>`).join("");
   $("#exportPicker").querySelectorAll(".chip").forEach(c => c.onclick = () => {
-    state.exportKind = c.dataset.x; save(); renderExport();
+    state.exportKind = c.dataset.x; save();
+    const po = $("#preflightOut"); if(po) po.innerHTML = "";
+    renderExport();
   });
   const cur = EXPORTS.find(e => e.k===state.exportKind) || EXPORTS[0];
   $("#exportHint").textContent = currentLang==="en" ? cur.hintEn : cur.hintJa;
@@ -1499,14 +1551,276 @@ async function runRemote(t){
   catch(e){ alert(String(e.message)); }
 }
 
+
+/* ---------- 14b. RUNBOOK (PowerShell) ----------
+   Commands are stored with @@TOKENS@@ and filled from state.env, so no JS
+   interpolation runs inside PowerShell text. */
+function psFill(code){
+  const e = state.env;
+  return code
+    .split("@@REPO@@").join(e.repo)
+    .split("@@HOST@@").join(e.host)
+    .split("@@PORT@@").join(e.port)
+    .split("@@BRANCH@@").join(e.branch);
+}
+const RUNBOOK = [
+ {id:"rb0", gate:false,
+  tJa:"0. 前提の実測", tEn:"0. Measure the prerequisites",
+  wJa:"何も変更しない。python / git / docker が入っているかを見るだけ。",
+  wEn:"Changes nothing — just reports whether python, git and docker are present.",
+  code:String.raw`# 入っていないものは "not found" と出る。それが導入対象。
+foreach ($c in 'python','git','docker') {
+  $cmd = Get-Command $c -ErrorAction SilentlyContinue
+  if ($cmd) { "{0,-8} {1}" -f $c, (& $c --version 2>&1 | Select-Object -First 1) }
+  else      { "{0,-8} not found" -f $c }
+}
+"PSVersion  " + $PSVersionTable.PSVersion.ToString()`},
+
+ {id:"rb1", gate:false,
+  tJa:"1. 司令塔を取得する", tEn:"1. Fetch the deck",
+  wJa:"リポジトリを取得／更新し、対象ブランチに切り替える。作業ツリーに未コミットの変更があれば git が止める。",
+  wEn:"Clones or updates the repository and checks out the branch. git stops if the working tree has uncommitted changes.",
+  code:String.raw`$Repo   = '@@REPO@@'
+$Branch = '@@BRANCH@@'
+if (-not (Test-Path $Repo)) {
+  git clone https://github.com/gitgptmin1973/agent-zero.git $Repo
+}
+Set-Location $Repo
+git fetch origin $Branch
+git checkout $Branch
+git pull origin $Branch
+Get-Item (Join-Path $Repo 'webui\orchestrator.html') |
+  Select-Object FullName, Length, LastWriteTime`},
+
+ {id:"rb2", gate:false,
+  tJa:"2. ポートを実測して開く", tEn:"2. Measure the port, then open",
+  wJa:"読むだけ。.env の WEB_UI_PORT と実際の待受を確認し、実測値で URL を作ってブラウザを開く。待受が無ければ起動コマンドを表示する。",
+  wEn:"Read-only. Reads WEB_UI_PORT from .env, checks what is actually listening, builds the URL from that and opens it. If nothing is listening it prints the start command instead.",
+  code:String.raw`$Repo = '@@REPO@@'
+$Port = '@@PORT@@'                      # 実測が取れなかったときの控え
+$envFile = Join-Path $Repo '.env'
+if (Test-Path $envFile) {
+  $m = Select-String -Path $envFile -Pattern '^\s*WEB_UI_PORT\s*=\s*(\d+)' | Select-Object -First 1
+  if ($m) { $Port = $m.Matches[0].Groups[1].Value; "from .env: WEB_UI_PORT=$Port" }
+  else    { "WEB_UI_PORT が .env に無い。控えの $Port を使う" }
+} else { ".env が無い。控えの $Port を使う" }
+
+$listen = Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue
+if (-not $listen) {
+  "port $Port で待ち受けていない。先に起動する:"
+  "    Set-Location '$Repo'; python run_ui.py --port $Port"
+} else {
+  $url = "http://@@HOST@@:$Port/orchestrator.html"
+  "opening $url"
+  Start-Process $url
+}`},
+
+ {id:"rb3", gate:false,
+  tJa:"3. 投入前プリフライト", tEn:"3. Preflight the export",
+  wJa:"読むだけ。移行タブでコピーした tasks.json を保存したファイルを検査する。1件でも問題があれば止まる。",
+  wEn:"Read-only. Checks the tasks.json you copied from the Migration tab and saved. Stops if anything fails.",
+  code:String.raw`$Src = "$env:USERPROFILE\Downloads\tasks.json"   # コピーしたJSONの保存先
+$raw = Get-Content -Raw -Path $Src
+try { $data = $raw | ConvertFrom-Json } catch { throw "JSON として読めない: " + $_.Exception.Message }
+
+$req  = 'uuid','name','state','system_prompt','prompt','attachments','created_at','updated_at','last_run','last_result','context_id','type','schedule'
+$sreq = 'minute','hour','day','month','weekday','timezone'
+$errs = New-Object System.Collections.Generic.List[string]
+$seen = @{}
+if (-not $data.tasks) { $errs.Add('ルートに tasks 配列が無い') }
+foreach ($t in $data.tasks) {
+  $keys = $t.PSObject.Properties.Name
+  foreach ($k in $req)  { if ($keys -notcontains $k) { $errs.Add($t.name + ": キー " + $k + " が無い") } }
+  if ($t.type -ne 'scheduled') { $errs.Add($t.name + ": type が scheduled でない") }
+  if ($t.schedule) {
+    $sk = $t.schedule.PSObject.Properties.Name
+    foreach ($k in $sreq) { if ($sk -notcontains $k) { $errs.Add($t.name + ": schedule." + $k + " が無い") } }
+    if ($t.schedule.minute -match '^\d+$' -and [int]$t.schedule.minute -gt 59) { $errs.Add($t.name + ": minute が範囲外") }
+    if ($t.schedule.hour   -match '^\d+$' -and [int]$t.schedule.hour   -gt 23) { $errs.Add($t.name + ": hour が範囲外") }
+    if ($t.schedule.weekday -match '^\d+$' -and [int]$t.schedule.weekday -gt 6) { $errs.Add($t.name + ": weekday が範囲外") }
+  }
+  if ($seen.ContainsKey($t.name)) { $errs.Add("名前が重複: " + $t.name) } else { $seen[$t.name] = 1 }
+}
+if ($raw.Length -gt 0 -and [int]$raw[0] -eq 65279) { $errs.Add('先頭に BOM がある（読み込み時に落ちる）') }
+if ($errs.Count) { $errs | ForEach-Object { "NG  " + $_ }; throw ("" + $errs.Count + " 件。投入しないこと。") }
+"OK  " + $data.tasks.Count + " 件、検査通過"`},
+
+ {id:"rb4", gate:true,
+  tJa:"4. バックアップしてから投入", tEn:"4. Back up, then apply",
+  wJa:"既存の tmp/scheduler/tasks.json を退避してから置き換える。BOM を付けずに書く（read_file は utf-8 固定・BOM を剥がさない / files.py:85-95）。",
+  wEn:"Moves the existing tmp/scheduler/tasks.json aside, then replaces it. Written without a BOM — read_file opens with plain utf-8 and does not strip one (files.py:85-95).",
+  code:String.raw`$Repo = '@@REPO@@'
+$Src  = "$env:USERPROFILE\Downloads\tasks.json"
+$Dst  = Join-Path $Repo 'tmp\scheduler\tasks.json'
+New-Item -ItemType Directory -Force -Path (Split-Path $Dst) | Out-Null
+
+if (Test-Path $Dst) {
+  $bak = $Dst + '.' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.bak'
+  Copy-Item $Dst $bak
+  "backup  " + $bak
+  $old = (Get-Content -Raw $Dst | ConvertFrom-Json)
+  "既存 " + $old.tasks.Count + " 件を置き換える"
+}
+
+$json = Get-Content -Raw -Path $Src
+$null = $json | ConvertFrom-Json          # 壊れていればここで止まる
+# Set-Content -Encoding utf8 は PowerShell 5.1 で BOM を付ける。使わない。
+[System.IO.File]::WriteAllText($Dst, $json, [System.Text.UTF8Encoding]::new($false))
+
+$check = Get-Content -Raw $Dst | ConvertFrom-Json
+"wrote   " + $check.tasks.Count + " tasks -> " + $Dst
+$check.tasks | Select-Object name,
+  @{n='cron';e={ "" + $_.schedule.minute + " " + $_.schedule.hour + " * * " + $_.schedule.weekday }} |
+  Format-Table -AutoSize`},
+
+ {id:"rb5", gate:true,
+  tJa:"5. 直前の状態へ戻す", tEn:"5. Roll back",
+  wJa:"最新のバックアップで tasks.json を上書きする。ブロック4を実行した直後にしか意味がない。",
+  wEn:"Overwrites tasks.json from the newest backup. Only meaningful right after block 4.",
+  code:String.raw`$Dst = Join-Path '@@REPO@@' 'tmp\scheduler\tasks.json'
+$bak = Get-ChildItem ($Dst + '.*.bak') -ErrorAction SilentlyContinue |
+       Sort-Object LastWriteTime -Descending | Select-Object -First 1
+if (-not $bak) { throw 'バックアップが無い' }
+Copy-Item $bak.FullName $Dst -Force
+"restored from " + $bak.Name`},
+
+ {id:"rb6", gate:true,
+  tJa:"6. 常駐化と自己修復", tEn:"6. Keep it running, and healing",
+  wJa:"管理者権限が要る。ログオン時に agent-zero を起動するタスクと、5分ごとに応答を見て落ちていれば起こし直すタスクを登録する。Basic 認証の 401 は「生きている」と判定する。",
+  wEn:"Needs an elevated shell. Registers one task that starts agent-zero at logon and one that checks every five minutes and restarts it if it stopped answering. A 401 from basic auth counts as alive.",
+  code:String.raw`# 管理者として実行した PowerShell で
+$Repo = '@@REPO@@'
+$Port = '@@PORT@@'
+$Name = 'agent-zero web ui'
+$py   = (Get-Command python -ErrorAction Stop).Source
+
+$action  = New-ScheduledTaskAction -Execute $py -Argument ("run_ui.py --port " + $Port) -WorkingDirectory $Repo
+$trigger = New-ScheduledTaskTrigger -AtLogOn
+$set     = New-ScheduledTaskSettingsSet -StartWhenAvailable -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
+Register-ScheduledTask -TaskName $Name -Action $action -Trigger $trigger -Settings $set -Force |
+  Select-Object TaskName, State
+
+# ヘルスチェック: 5分ごとに応答を確認し、落ちていれば起こし直す
+$probe = @'
+$Port = "__PORT__"; $Name = "agent-zero web ui"; $alive = $false
+try {
+  Invoke-WebRequest ("http://127.0.0.1:" + $Port + "/") -UseBasicParsing -TimeoutSec 10 | Out-Null
+  $alive = $true
+} catch {
+  $resp = $_.Exception.Response
+  if ($resp) {
+    $code = [int]$resp.StatusCode            # 5.1 と 7 の両方で int になる
+    if ($code -eq 401 -or $code -eq 403) { $alive = $true }   # 認証が返る = 生きている
+  }
+}
+if (-not $alive) { Start-ScheduledTask -TaskName $Name }
+'@ -replace '__PORT__', $Port
+$probePath = Join-Path $Repo 'tmp\health-probe.ps1'
+[System.IO.File]::WriteAllText($probePath, $probe, [System.Text.UTF8Encoding]::new($false))
+
+$hAction  = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -ExecutionPolicy Bypass -File "' + $probePath + '"')
+# RepetitionDuration の MaxValue は「無期限」。古いビルドで弾かれたらこの引数だけ外す
+$hTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(5) -RepetitionInterval (New-TimeSpan -Minutes 5) -RepetitionDuration ([TimeSpan]::MaxValue)
+Register-ScheduledTask -TaskName 'agent-zero health probe' -Action $hAction -Trigger $hTrigger -Force |
+  Select-Object TaskName, State`},
+
+ {id:"rb7", gate:true, human:true,
+  tJa:"7. claude.ai 側を止める（人手）", tEn:"7. Switch the cloud side off (by hand)",
+  wJa:"PowerShell では到達できない。並走で差分が出なくなった行だけ、claude.ai のスケジュール済みタスクを開いて無効化する。削除しない — 戻せなくなる。",
+  wEn:"Out of PowerShell's reach. For each row whose parallel run stopped showing a diff, open the scheduled task on claude.ai and disable it. Do not delete — deletion cannot be undone.",
+  code:null}
+];
+function renderRunbook(){
+  const en = currentLang==="en";
+  const box = $("#runbook"); box.innerHTML = "";
+  RUNBOOK.forEach(b => {
+    const card = el("div","panel");
+    card.style.marginBottom = "12px";
+    const gate = b.gate ? `<span class="badge crit">${en?"USER GATE":"USER GATE"}</span>` : "";
+    const human = b.human ? `<span class="badge warn">${en?"by hand":"人手"}</span>` : "";
+    card.innerHTML = `
+      <div class="row" style="justify-content:space-between;align-items:flex-start">
+        <div style="flex:1 1 260px">
+          <b style="font-size:13.5px">${en?b.tEn:b.tJa}</b>
+          <div style="font-size:12px;color:var(--ink2);margin-top:2px">${en?b.wEn:b.wJa}</div>
+        </div>
+        <div class="row" style="gap:6px;flex:0 0 auto">${gate}${human}
+          ${b.code ? `<button class="btn ghost" data-rb="${b.id}">${en?"Copy":"コピー"}</button>` : ""}</div>
+      </div>
+      ${b.code ? `<pre class="out" style="margin-top:10px">${esc(psFill(b.code))}</pre>` : ""}`;
+    box.appendChild(card);
+  });
+  box.querySelectorAll("button[data-rb]").forEach(btn => btn.onclick = () => {
+    const b = RUNBOOK.find(x => x.id===btn.dataset.rb);
+    copyText(psFill(b.code), btn);
+  });
+}
+/* ---------- 14c. PREFLIGHT (same checks as runbook block 3) ---------- */
+function preflightTasks(text){
+  const out = [];
+  if(text.charCodeAt(0) === 0xFEFF) out.push("BOM が先頭にある（agent-zero の read_file は utf-8 固定で BOM を剥がさない）");
+  let d;
+  try{ d = JSON.parse(text); }catch(e){ return ["JSON として読めない: " + e.message]; }
+  if(!d || !Array.isArray(d.tasks)) return ["ルートに tasks 配列が無い"];
+  const req = ["uuid","name","state","system_prompt","prompt","attachments","created_at","updated_at","last_run","last_result","context_id","type","schedule"];
+  const sreq = ["minute","hour","day","month","weekday","timezone"];
+  const seen = new Set();
+  d.tasks.forEach(t => {
+    req.forEach(k => { if(!(k in t)) out.push(`${t.name||"?"}: キー ${k} が無い`); });
+    if(t.type !== "scheduled") out.push(`${t.name}: type が scheduled でない`);
+    if(t.schedule){
+      sreq.forEach(k => { if(!(k in t.schedule)) out.push(`${t.name}: schedule.${k} が無い`); });
+      const n = k => /^\d+$/.test(t.schedule[k]) ? +t.schedule[k] : null;
+      if(n("minute") > 59) out.push(`${t.name}: minute が範囲外`);
+      if(n("hour") > 23) out.push(`${t.name}: hour が範囲外`);
+      if(n("weekday") > 6) out.push(`${t.name}: weekday が範囲外`);
+    }
+    if(seen.has(t.name)) out.push(`名前が重複: ${t.name}`); else seen.add(t.name);
+    if(!Number.isFinite(Date.parse(t.created_at))) out.push(`${t.name}: created_at が ISO 8601 として読めない`);
+  });
+  return out;
+}
+function runPreflight(){
+  const en = currentLang==="en";
+  const target = $("#preflightOut");
+  if(state.exportKind !== "tasks"){
+    target.innerHTML = `<div class="note">${en?"Switch to the tasks.json export to run this check.":"tasks.json のエクスポートに切り替えてから実行する。"}</div>`;
+    return;
+  }
+  const issues = preflightTasks($("#exportOut").textContent);
+  target.innerHTML = issues.length
+    ? `<div class="note crit"><b>${issues.length} ${en?"problems — do not apply":"件の問題。投入しないこと"}</b>
+        <ul class="tight">${issues.map(i => `<li>${esc(i)}</li>`).join("")}</ul></div>`
+    : `<div class="note info"><b>${en?"Passed":"検査通過"}</b> — ${en
+        ? "keys, type, schedule fields, cron ranges, duplicate names and timestamps all check out."
+        : "キー・type・schedule・cron 範囲・名前重複・日時形式すべて問題なし。"}</div>`;
+}
+/* shared clipboard helper */
+async function copyText(text, btn){
+  try{ await navigator.clipboard.writeText(text); }
+  catch(e){
+    const ta = document.createElement("textarea");
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    try{ document.execCommand("copy"); }catch(_){}
+    ta.remove();
+  }
+  if(btn){
+    const old = btn.innerHTML;
+    btn.innerHTML = currentLang==="en" ? "Copied" : "コピーした";
+    setTimeout(() => { btn.innerHTML = old; }, 1400);
+  }
+}
+
 /* ---------- 15. INIT ---------- */
 function renderAll(){
   renderTabs(); renderKPI(); renderTimeline(); renderHeat(); renderMix();
   renderTable(); renderDrawer(); renderWaves(); renderDag(); renderCollide();
-  renderPhases(); renderVerdicts(); renderExport(); renderGates();
+  renderPhases(); renderVerdicts(); renderExport(); renderGates(); renderRunbook();
   renderDoctrine(); renderChecklist(); renderLegal(); renderCost();
   $("#conc").value = state.conc; $("#step").value = state.step;
   ["pin","pout","fx","tl","tm","th"].forEach(k => { $("#"+k).value = state.cost[k]; });
+  $("#envRepo").value = state.env.repo; $("#envHost").value = state.env.host;
+  $("#envPort").value = state.env.port; $("#envBranch").value = state.env.branch;
   $("#originChip").textContent = location.protocol==="file:" ? "file://" : location.origin;
   showTab();
 }
@@ -1543,19 +1857,11 @@ function init(){
   ["pin","pout","fx","tl","tm","th"].forEach(k => {
     $("#"+k).oninput = e => { state.cost[k] = e.target.value; save(); renderCost(); };
   });
-  $("#btnCopy").onclick = async () => {
-    const text = $("#exportOut").textContent;
-    try{ await navigator.clipboard.writeText(text); }
-    catch(e){
-      const ta = document.createElement("textarea");
-      ta.value = text; document.body.appendChild(ta); ta.select();
-      try{ document.execCommand("copy"); }catch(_){}
-      ta.remove();
-    }
-    const b = $("#btnCopy"); const old = b.innerHTML;
-    b.innerHTML = currentLang==="en" ? "Copied" : "コピーした";
-    setTimeout(() => { b.innerHTML = old; }, 1400);
-  };
+  $("#btnCopy").onclick = () => copyText($("#exportOut").textContent, $("#btnCopy"));
+  $("#btnPreflight").onclick = runPreflight;
+  [["envRepo","repo"],["envHost","host"],["envPort","port"],["envBranch","branch"]].forEach(([id,k]) => {
+    $("#"+id).oninput = e => { state.env[k] = e.target.value; save(); renderRunbook(); };
+  });
   document.addEventListener("keydown", e => { if(e.key==="Escape" && selected){ selected = null; renderDrawer(); renderTable(); } });
   setLang("ja");
   connectLive();
