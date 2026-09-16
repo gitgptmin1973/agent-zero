@@ -1,0 +1,2169 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>統合オーケストレーション司令塔</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;700&family=Zen+Old+Mincho:wght@500;700&display=swap">
+<style>
+/* ===================== TOKENS ===================== */
+:root{
+  --bg:#EDF0F1; --panel:#FFFFFF; --panel2:#F5F8F8; --sunk:#E4EAEA;
+  --ink:#131D1C; --ink2:#53625F; --ink3:#7C8C88;
+  --line:#D3DCDB; --line2:#BCC9C7;
+  --accent:#1F6F63; --accent-ink:#12433B; --accent-soft:#DEEDE9;
+  --ok:#2E7D5B; --warn:#9E6710; --crit:#AE3B2B; --info:#345F97;
+  --ok-bg:#E1F0E8; --warn-bg:#F6EBD8; --crit-bg:#F7E3DF; --info-bg:#E2EAF5;
+  --shadow:0 1px 2px rgba(19,29,28,.06), 0 6px 18px -12px rgba(19,29,28,.35);
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:"Noto Sans JP",system-ui,-apple-system,"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;
+  --disp:"Zen Old Mincho","Hiragino Mincho ProN","Yu Mincho",serif;
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0E1413; --panel:#151E1D; --panel2:#1B2524; --sunk:#111917;
+    --ink:#E3EBE8; --ink2:#9BABA7; --ink3:#778884;
+    --line:#283533; --line2:#374744;
+    --accent:#52C3AC; --accent-ink:#9EE2D3; --accent-soft:#16302C;
+    --ok:#5CB98D; --warn:#D2A150; --crit:#DE7A68; --info:#7FA8DE;
+    --ok-bg:#16302A; --warn-bg:#332918; --crit-bg:#341F1C; --info-bg:#1B2536;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -14px rgba(0,0,0,.8);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0E1413; --panel:#151E1D; --panel2:#1B2524; --sunk:#111917;
+  --ink:#E3EBE8; --ink2:#9BABA7; --ink3:#778884;
+  --line:#283533; --line2:#374744;
+  --accent:#52C3AC; --accent-ink:#9EE2D3; --accent-soft:#16302C;
+  --ok:#5CB98D; --warn:#D2A150; --crit:#DE7A68; --info:#7FA8DE;
+  --ok-bg:#16302A; --warn-bg:#332918; --crit-bg:#341F1C; --info-bg:#1B2536;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -14px rgba(0,0,0,.8);
+}
+/* ===================== BASE ===================== */
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--ink); font-family:var(--sans);
+  font-size:14px; line-height:1.6; -webkit-font-smoothing:antialiased;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+h1,h2,h3{font-family:var(--disp); font-weight:700; text-wrap:balance; margin:0}
+a{color:var(--accent); text-underline-offset:2px}
+button{font-family:inherit}
+[hidden]{display:none !important}
+:focus-visible{outline:2px solid var(--accent); outline-offset:2px; border-radius:4px}
+.mono{font-family:var(--mono); font-variant-numeric:tabular-nums}
+/* ===================== JA/EN TOGGLE STANDARD (html-lang-toggle v1.0) ===================== */
+.en{display:none}
+body.lang-en .ja{display:none}
+body.lang-en .en{display:block}
+.flex-en{display:none}
+body.lang-en .flex-ja{display:none}
+body.lang-en .flex-en{display:flex}
+span.en{display:none}
+body.lang-en span.ja{display:none}
+body.lang-en span.en{display:inline}
+.lang-toggle{display:flex;border:1px solid var(--line2);border-radius:20px;overflow:hidden;align-self:center}
+.lang-btn{padding:5px 14px;font-size:12px;font-weight:600;cursor:pointer;background:transparent;color:var(--ink2);border:none;transition:background .15s,color .15s}
+.lang-btn.active{background:var(--accent);color:#fff}
+.lang-btn:hover:not(.active){background:var(--accent-soft)}
+/* ===================== HEADER ===================== */
+.topbar{position:sticky;top:env(safe-area-inset-top,0px);z-index:40;background:var(--panel);border-bottom:1px solid var(--line)}
+.topbar-in{max-width:1220px;margin:0 auto;padding:10px 16px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.brand{display:flex;flex-direction:column;gap:1px;margin-right:auto;min-width:0}
+.brand h1{font-size:19px;letter-spacing:.02em;line-height:1.25}
+.brand .sub{font-size:11px;color:var(--ink3);font-family:var(--mono);letter-spacing:.06em;text-transform:uppercase}
+.linkstate{display:flex;align-items:center;gap:8px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--ink3);flex:none}
+.dot.live{background:var(--ok);box-shadow:0 0 0 3px var(--ok-bg)}
+.dot.off{background:var(--warn);box-shadow:0 0 0 3px var(--warn-bg)}
+.statechip{font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--ink2);border:1px solid var(--line);border-radius:20px;padding:4px 10px;white-space:nowrap}
+.icon-btn{background:var(--panel2);border:1px solid var(--line);color:var(--ink2);border-radius:20px;padding:5px 12px;font-size:12px;cursor:pointer}
+.icon-btn:hover{border-color:var(--accent);color:var(--accent)}
+/* tabs */
+.tabs{max-width:1220px;margin:0 auto;padding:0 16px;display:flex;gap:2px;overflow-x:auto;scrollbar-width:thin}
+.tab{appearance:none;background:transparent;border:none;border-bottom:2px solid transparent;color:var(--ink2);padding:10px 12px;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap}
+.tab:hover{color:var(--ink)}
+.tab[aria-selected="true"]{color:var(--accent);border-bottom-color:var(--accent);font-weight:700}
+.tab .n{font-family:var(--mono);font-size:10px;color:var(--ink3);margin-right:6px}
+/* ===================== LAYOUT ===================== */
+main{max-width:1220px;margin:0 auto;padding-block:20px 60px;padding-left:16px;padding-right:16px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px}
+.panel.flat{box-shadow:none}
+.panel h2{font-size:15px;letter-spacing:.02em}
+.sec{margin-bottom:18px}
+.sec-head{display:flex;align-items:baseline;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+.sec-head h2{font-size:16px}
+.sec-head .hint{font-size:11.5px;color:var(--ink3)}
+.grid{display:grid;gap:12px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.spacer{flex:1 1 auto}
+/* KPI */
+.kpis{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column;gap:2px}
+.kpi .lbl{font-size:11px;color:var(--ink3);letter-spacing:.04em}
+.kpi .val{font-family:var(--mono);font-size:26px;font-weight:600;line-height:1.15;font-variant-numeric:tabular-nums}
+.kpi .foot{font-size:11px;color:var(--ink2)}
+.kpi.alert{border-color:var(--crit);background:var(--crit-bg)}
+.kpi.alert .val{color:var(--crit)}
+.kpi.caution{border-left:3px solid var(--warn)}
+.kpi.good{border-left:3px solid var(--ok)}
+/* chips / badges */
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-family:var(--mono);letter-spacing:.03em;padding:2px 7px;border-radius:4px;border:1px solid var(--line);color:var(--ink2);background:var(--panel2);white-space:nowrap}
+.badge.ok{color:var(--ok);background:var(--ok-bg);border-color:transparent}
+.badge.warn{color:var(--warn);background:var(--warn-bg);border-color:transparent}
+.badge.crit{color:var(--crit);background:var(--crit-bg);border-color:transparent}
+.badge.info{color:var(--info);background:var(--info-bg);border-color:transparent}
+.badge.tier{font-weight:600}
+.chipbar{display:flex;gap:6px;flex-wrap:wrap}
+.chip{font-size:12px;padding:4px 11px;border-radius:16px;border:1px solid var(--line);background:var(--panel);color:var(--ink2);cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+input[type="search"],input[type="text"],input[type="number"],select{
+  font-family:inherit;font-size:13px;color:var(--ink);background:var(--panel);
+  border:1px solid var(--line2);border-radius:6px;padding:6px 9px;max-width:100%}
+input[type="number"]{font-family:var(--mono);text-align:right}
+select{cursor:pointer}
+label.fld{display:flex;flex-direction:column;gap:3px;font-size:11.5px;color:var(--ink2)}
+/* table */
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r);background:var(--panel)}
+table{border-collapse:collapse;width:100%;min-width:860px}
+thead th{position:sticky;top:0;background:var(--panel2);text-align:left;font-size:11px;letter-spacing:.05em;color:var(--ink2);font-weight:600;padding:9px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+thead th.sortable{cursor:pointer;user-select:none}
+thead th.sortable:hover{color:var(--accent)}
+tbody td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:middle;font-size:12.5px}
+tbody tr:last-child td{border-bottom:none}
+tbody tr.rowsel{background:var(--accent-soft)}
+tbody tr:hover{background:var(--panel2)}
+td.name{min-width:240px}
+td.name b{font-weight:500;font-size:13px}
+td.name .meta{display:block;font-size:11px;color:var(--ink3)}
+.cellsel{font-size:11.5px;padding:3px 6px;border-radius:5px;border:1px solid var(--line);background:var(--panel2);color:var(--ink)}
+.linkbtn{background:none;border:none;color:var(--accent);cursor:pointer;font-size:12px;padding:0;text-decoration:underline;text-underline-offset:2px}
+/* detail drawer */
+.drawer{position:fixed;inset:auto 0 0 auto;top:0;height:100%;width:min(420px,100%);background:var(--panel);border-left:1px solid var(--line);box-shadow:-18px 0 40px -28px rgba(0,0,0,.6);z-index:60;display:flex;flex-direction:column}
+.drawer header{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:flex-start}
+.drawer .body{padding:14px 16px;overflow-y:auto;display:flex;flex-direction:column;gap:12px}
+.dl{display:grid;grid-template-columns:96px 1fr;gap:4px 10px;font-size:12.5px}
+.dl dt{color:var(--ink3);font-size:11.5px}
+.dl dd{margin:0}
+.closex{background:var(--panel2);border:1px solid var(--line);border-radius:6px;width:28px;height:28px;cursor:pointer;color:var(--ink2);flex:none;font-size:15px;line-height:1}
+/* charts */
+.chartbox{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px}
+svg{display:block;max-width:100%;height:auto}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:11.5px;color:var(--ink2);margin-top:8px}
+.legend i{width:10px;height:10px;border-radius:2px;display:inline-block;margin-right:5px;vertical-align:-1px}
+/* heatmap */
+.heat{display:grid;grid-template-columns:34px repeat(7,1fr);gap:2px;font-size:10px}
+.heat .hd{color:var(--ink3);text-align:center;font-family:var(--mono);padding-bottom:2px}
+.heat .hr{color:var(--ink3);font-family:var(--mono);text-align:right;padding-right:4px;line-height:13px}
+.heat .cell{height:13px;border-radius:2px;background:var(--sunk)}
+.heat .cell.l1{background:color-mix(in srgb,var(--accent) 35%,var(--sunk))}
+.heat .cell.l2{background:color-mix(in srgb,var(--accent) 70%,var(--sunk))}
+.heat .cell.l3{background:var(--crit)}
+/* waves */
+.lane{display:grid;grid-template-columns:132px 1fr;gap:10px;align-items:start;padding:10px 0;border-bottom:1px dashed var(--line)}
+.lane:last-child{border-bottom:none}
+.lane .lname{font-family:var(--disp);font-size:14px;font-weight:700}
+.lane .lname small{display:block;font-family:var(--mono);font-size:10px;color:var(--ink3);font-weight:400;letter-spacing:.06em}
+.taskchip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--panel2);border-radius:16px;padding:4px 10px;font-size:12px;margin:0 6px 6px 0;cursor:pointer}
+.taskchip:hover{border-color:var(--accent)}
+.taskchip .t{font-family:var(--mono);font-size:10.5px;color:var(--ink3)}
+.taskchip.l4{border-color:var(--crit);background:var(--crit-bg)}
+.taskchip.off{opacity:.45;text-decoration:line-through}
+/* code output */
+pre.out{background:var(--sunk);border:1px solid var(--line);border-radius:8px;padding:12px;overflow:auto;max-height:340px;font-family:var(--mono);font-size:11.5px;line-height:1.55;color:var(--ink);white-space:pre;margin:0}
+.btn{background:var(--accent);color:#fff;border:1px solid var(--accent);border-radius:7px;padding:7px 14px;font-size:12.5px;font-weight:600;cursor:pointer}
+.btn:hover{filter:brightness(1.08)}
+.btn.ghost{background:var(--panel);color:var(--ink2);border-color:var(--line2)}
+.btn.ghost:hover{color:var(--accent);border-color:var(--accent);filter:none}
+.btn.danger{background:var(--crit);border-color:var(--crit)}
+.btn:disabled{opacity:.45;cursor:not-allowed;filter:none}
+/* notes */
+.note{border-left:3px solid var(--warn);background:var(--warn-bg);color:var(--ink);padding:9px 12px;border-radius:0 7px 7px 0;font-size:12.5px}
+.note.info{border-left-color:var(--info);background:var(--info-bg)}
+.note.crit{border-left-color:var(--crit);background:var(--crit-bg)}
+.note b{font-weight:700}
+ul.tight{margin:6px 0 0;padding-left:18px}
+ul.tight li{margin-bottom:3px;font-size:12.5px}
+/* checklist */
+.check{display:flex;gap:9px;align-items:flex-start;padding:7px 0;border-bottom:1px solid var(--line);font-size:12.5px}
+.check:last-child{border-bottom:none}
+.check input{margin-top:3px;accent-color:var(--accent)}
+.check .k{font-family:var(--mono);font-size:10.5px;color:var(--ink3);flex:none;width:52px}
+/* phases */
+.phase{display:grid;grid-template-columns:70px 1fr;gap:12px;padding:11px 0;border-bottom:1px solid var(--line)}
+.phase:last-child{border-bottom:none}
+.phase .pn{font-family:var(--mono);font-size:11px;color:var(--accent);letter-spacing:.08em;font-weight:600}
+.phase h3{font-size:13.5px;font-family:var(--sans);font-weight:700;margin-bottom:2px}
+.phase p{margin:0;font-size:12.5px;color:var(--ink2)}
+/* gate matrix */
+.gmark{display:inline-block;width:100%;text-align:center;font-family:var(--mono);font-size:12px}
+.gmark.on{color:var(--crit);font-weight:600}
+.gmark.off{color:var(--line2)}
+/* cost */
+.figs{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.fig{border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;background:var(--panel)}
+.fig .lbl{font-size:11px;color:var(--ink3)}
+.fig .val{font-family:var(--mono);font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}
+.fig .val.dim{color:var(--ink3);font-size:14px;font-weight:400}
+footer{max-width:1220px;margin:0 auto;padding:22px 16px 40px;color:var(--ink3);font-size:11.5px;border-top:1px solid var(--line)}
+@media (max-width:640px){
+  .lane{grid-template-columns:1fr}
+  .dl{grid-template-columns:80px 1fr}
+  .brand h1{font-size:16px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none !important;animation:none !important}}
+</style>
+</head>
+<body class="lang-ja">
+
+<header class="topbar">
+  <div class="topbar-in">
+    <div class="brand">
+      <h1><span class="ja">統合オーケストレーション司令塔</span><span class="en">Orchestration Command Deck</span></h1>
+      <span class="sub">agent-zero &middot; MinoPRO local sovereign scheduler</span>
+    </div>
+    <div class="linkstate">
+      <span class="dot off" id="linkDot"></span>
+      <span class="statechip" id="linkChip">OFFLINE</span>
+      <button class="icon-btn" id="btnConnect"><span class="ja">接続</span><span class="en">Connect</span></button>
+    </div>
+    <button class="icon-btn" id="btnTheme" title="theme">◐</button>
+    <div class="lang-toggle">
+      <button class="lang-btn active" data-lang="ja" onclick="setLang('ja')">JA</button>
+      <button class="lang-btn" data-lang="en" onclick="setLang('en')">EN</button>
+    </div>
+  </div>
+  <nav class="tabs" role="tablist" id="tabbar"></nav>
+</header>
+
+<main>
+<!-- ============================ TAB 1: COMMAND ============================ -->
+<section id="tab-command" role="tabpanel">
+  <div class="sec">
+    <div class="sec-head">
+      <h2><span class="ja">稼働概況</span><span class="en">Fleet status</span></h2>
+      <span class="hint ja">claude.ai の Routines API（list_triggers）から全 20 本を実測。cron は JST 換算値、実行時間は各 Routine の直近実行から算出。</span>
+      <span class="hint en">All 20 routines measured through the claude.ai Routines API (list_triggers): cron converted to JST, runtime taken from each routine own last run.</span>
+    </div>
+    <div class="grid kpis" id="kpis"></div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-head">
+      <h2><span class="ja">24時間 起動タイムライン</span><span class="en">24-hour launch timeline</span></h2>
+      <span class="hint ja">日次・平日タスクの起動時刻（JST）。同時刻に重なる本数が同時実行上限を超える帯を衝突として表示。</span>
+      <span class="hint en">Daily and weekday launches (JST). Bands exceeding the concurrency limit are marked as collisions.</span>
+    </div>
+    <div class="chartbox">
+      <div id="timeline"></div>
+      <div class="legend" id="tlLegend"></div>
+    </div>
+  </div>
+
+  <div class="grid sec" style="grid-template-columns:repeat(auto-fit,minmax(320px,1fr))">
+    <div class="chartbox">
+      <h2 style="font-size:14px;margin-bottom:10px"><span class="ja">週次 負荷ヒートマップ</span><span class="en">Weekly load heatmap</span></h2>
+      <div class="heat" id="heat"></div>
+      <div class="legend">
+        <span><i style="background:var(--sunk)"></i><span class="ja">起動なし</span><span class="en">idle</span></span>
+        <span><i style="background:color-mix(in srgb,var(--accent) 35%,var(--sunk))"></i>1</span>
+        <span><i style="background:color-mix(in srgb,var(--accent) 70%,var(--sunk))"></i>2</span>
+        <span><i style="background:var(--crit)"></i>3+</span>
+      </div>
+    </div>
+    <div class="chartbox">
+      <h2 style="font-size:14px;margin-bottom:10px"><span class="ja">ローカル化の到達度</span><span class="en">Localization reach</span></h2>
+      <div id="mix"></div>
+      <div class="legend" id="mixLegend"></div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-head">
+      <h2><span class="ja">agent-zero 接続</span><span class="en">agent-zero link</span></h2>
+    </div>
+    <div class="panel">
+      <div class="row" style="margin-bottom:10px">
+        <span class="badge" id="originChip">origin</span>
+        <button class="btn ghost" id="btnPull"><span class="ja">タスク一覧を取得</span><span class="en">Fetch task list</span></button>
+        <button class="btn ghost" id="btnTick" disabled><span class="ja">スケジューラを1回叩く</span><span class="en">Run scheduler tick</span></button>
+        <span class="badge warn"><span class="ja">tick は 127.0.0.1 からのみ</span><span class="en">tick: loopback only</span></span>
+      </div>
+      <div id="liveOut"></div>
+      <div class="note info" style="margin-top:10px">
+        <span class="ja"><b>ライブ連携条件（実測）:</b> agent-zero は <code class="mono">webui/</code> を <code class="mono">/</code> で静的配信する（run_ui.py:28）。本ファイルを <code class="mono">http://&lt;host&gt;:&lt;port&gt;/orchestrator.html</code> として開いた場合のみ、<code class="mono">GET /csrf_token</code> → <code class="mono">X-CSRF-Token</code> ヘッダ付き POST で API を叩ける。<code class="mono">file://</code> で直接開いた場合は自動的に閲覧＋エクスポート専用になる。ポート番号は環境依存のため都度実測すること。</span>
+        <span class="en"><b>Live-link requirement (verified):</b> agent-zero serves <code class="mono">webui/</code> at <code class="mono">/</code> (run_ui.py:28). Only when this file is opened as <code class="mono">http://&lt;host&gt;:&lt;port&gt;/orchestrator.html</code> can it call the API via <code class="mono">GET /csrf_token</code> plus an <code class="mono">X-CSRF-Token</code> POST. Opened over <code class="mono">file://</code> it falls back to view-and-export only. Port is environment specific — check it each time.</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ TAB 2: REGISTRY ============================ -->
+<section id="tab-registry" role="tabpanel" hidden>
+  <div class="sec">
+    <div class="sec-head">
+      <h2><span class="ja">タスク台帳</span><span class="en">Task registry</span></h2>
+      <span class="hint ja">Tier と実行先はこの場で変更でき、ブラウザ内（localStorage）に保存される。KPI・エクスポートに即反映。</span>
+      <span class="hint en">Tier and runner are editable here and stored in this browser (localStorage). KPIs and exports update immediately.</span>
+    </div>
+    <div class="panel" style="margin-bottom:12px">
+      <div class="row" style="margin-bottom:8px">
+        <input type="search" id="q" style="min-width:210px;flex:1 1 240px">
+        <span class="badge" id="countChip"></span>
+        <span class="spacer"></span>
+        <button class="btn ghost" id="btnResetOv"><span class="ja">編集をリセット</span><span class="en">Reset edits</span></button>
+      </div>
+      <div class="chipbar" id="filters"></div>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr id="thead"></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ TAB 3: ORCHESTRATION ============================ -->
+<section id="tab-orch" role="tabpanel" hidden>
+  <div class="sec">
+    <div class="sec-head">
+      <h2><span class="ja">実行ウェーブと依存</span><span class="en">Execution waves and dependencies</span></h2>
+      <span class="hint ja">ウェーブ割付と依存エッジはタスク名・内容からの<b>設計提案</b>であり、claude.ai 側の実定義では確認していない。</span>
+      <span class="hint en">Wave assignment and dependency edges are a <b>design proposal</b> inferred from task names — not verified against the claude.ai definitions.</span>
+    </div>
+    <div class="panel" id="waves"></div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-head">
+      <h2><span class="ja">依存グラフ（提案）</span><span class="en">Dependency graph (proposed)</span></h2>
+    </div>
+    <div class="chartbox"><div id="dag"></div></div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-head">
+      <h2><span class="ja">衝突解消エンジン</span><span class="en">Collision resolver</span></h2>
+      <span class="hint ja">同時刻起動をずらし、同時実行上限内に収める。ずらし幅はタスク別オフセットとして保存され、cron 出力に反映される。</span>
+      <span class="hint en">Staggers simultaneous launches to fit the concurrency limit. Offsets persist per task and flow into the cron exports.</span>
+    </div>
+    <div class="panel">
+      <div class="row" style="margin-bottom:12px">
+        <label class="fld"><span class="ja">同時実行上限</span><span class="en">Concurrency limit</span>
+          <input type="number" id="conc" min="1" max="8" step="1" style="width:76px"></label>
+        <label class="fld"><span class="ja">ずらし幅の基準（分）</span><span class="en">Stagger step (min)</span>
+          <input type="number" id="step" min="1" max="60" step="1" style="width:76px"></label>
+        <span class="spacer"></span>
+        <button class="btn" id="btnJitter"><span class="ja">衝突を自動解消</span><span class="en">Auto-resolve</span></button>
+        <button class="btn ghost" id="btnJitterReset"><span class="ja">オフセット解除</span><span class="en">Clear offsets</span></button>
+      </div>
+      <div id="collide"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ TAB 4: MIGRATION ============================ -->
+<section id="tab-migration" role="tabpanel" hidden>
+  <div class="sec">
+    <div class="sec-head">
+      <h2><span class="ja">claude.ai からの離脱計画</span><span class="en">Exit plan from claude.ai</span></h2>
+      <span class="hint ja">チェック状態はブラウザに保存される。</span><span class="hint en">Checkbox state is stored in this browser.</span>
+    </div>
+    <div class="panel" id="phases"></div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-head">
+      <h2><span class="ja">移行判定サマリ</span><span class="en">Migration verdicts</span></h2>
+    </div>
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(215px,1fr))" id="verdicts"></div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-head">
+      <h2><span class="ja">エクスポート</span><span class="en">Export</span></h2>
+      <span class="hint ja">生成物はコピーして使う（ブラウザのダウンロード制限を避けるため、リンク配布はしない）。</span>
+      <span class="hint en">Copy the output to use it — no download links, to stay within sandboxed-viewer limits.</span>
+    </div>
+    <div class="panel">
+      <div class="chipbar" id="exportPicker" style="margin-bottom:10px"></div>
+      <div class="row" style="margin-bottom:8px">
+        <span class="badge" id="exportHint"></span>
+        <span class="spacer"></span>
+        <button class="btn ghost" id="btnPreflight"><span class="ja">投入前チェック</span><span class="en">Preflight</span></button>
+        <button class="btn" id="btnCopy"><span class="ja">クリップボードにコピー</span><span class="en">Copy to clipboard</span></button>
+      </div>
+      <div id="preflightOut" style="margin-bottom:8px"></div>
+      <pre class="out" id="exportOut"></pre>
+      <div class="note" style="margin-top:10px">
+        <span class="ja"><b>投入は人手で。</b> 生成した <code class="mono">tasks.json</code> は <code class="mono">tmp/scheduler/tasks.json</code> を<b>上書き</b>する。既存タスクがある場合は必ずバックアップを取り、内容を目視してから置き換えること。本ダッシュボードから削除系 API は一切呼ばない。</span>
+        <span class="en"><b>Apply by hand.</b> The generated <code class="mono">tasks.json</code> <b>overwrites</b> <code class="mono">tmp/scheduler/tasks.json</code>. Back up any existing tasks and read the file before replacing it. This dashboard never calls a delete API.</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ TAB 5: SAFETY ============================ -->
+<section id="tab-safety" role="tabpanel" hidden>
+  <div class="sec">
+    <div class="sec-head">
+      <h2><span class="ja">USER GATE マトリクス</span><span class="en">USER GATE matrix</span></h2>
+      <span class="hint ja">自動実行を許さない操作の一覧。該当タスクは無人実行時に「提示まで」で停止させる。</span>
+      <span class="hint en">Operations that must not run unattended. Those tasks stop at "proposed" when running headless.</span>
+    </div>
+    <div class="tablewrap"><table><thead><tr id="gthead"></tr></thead><tbody id="gtbody"></tbody></table></div>
+  </div>
+
+  <div class="grid sec" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
+    <div class="panel">
+      <h2 style="font-size:14px;margin-bottom:8px"><span class="ja">無事故運用ドクトリン</span><span class="en">Zero-incident doctrine</span></h2>
+      <div id="doctrine"></div>
+    </div>
+    <div class="panel">
+      <h2 style="font-size:14px;margin-bottom:8px"><span class="ja">切替前チェックリスト</span><span class="en">Pre-cutover checklist</span></h2>
+      <div id="checklist"></div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="panel">
+      <h2 style="font-size:14px;margin-bottom:8px"><span class="ja">法務・表示</span><span class="en">Legal and disclosure</span></h2>
+      <div id="legal"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ TAB 6: COST ============================ -->
+<section id="tab-cost" role="tabpanel" hidden>
+  <div class="sec">
+    <div class="sec-head">
+      <h2><span class="ja">コスト試算</span><span class="en">Cost model</span></h2>
+      <span class="hint ja">単価・為替は揮発情報のため既定値を持たない。実測値を入力するまで金額は計算しない。</span>
+      <span class="hint en">Unit prices and FX are volatile, so no defaults ship here. Nothing is priced until you enter measured values.</span>
+    </div>
+    <div class="panel">
+      <div class="row" style="align-items:flex-end;gap:14px">
+        <label class="fld"><span class="ja">入力単価 USD / 100万トークン</span><span class="en">Input price USD / 1M tok</span>
+          <input type="number" id="pin" min="0" step="0.01" placeholder="未確認" style="width:110px"></label>
+        <label class="fld"><span class="ja">出力単価 USD / 100万トークン</span><span class="en">Output price USD / 1M tok</span>
+          <input type="number" id="pout" min="0" step="0.01" placeholder="未確認" style="width:110px"></label>
+        <label class="fld"><span class="ja">為替 JPY/USD</span><span class="en">FX JPY/USD</span>
+          <input type="number" id="fx" min="0" step="0.1" placeholder="未確認" style="width:100px"></label>
+        <span class="badge warn"><span class="ja">要実測</span><span class="en">measure first</span></span>
+      </div>
+      <div class="row" style="align-items:flex-end;gap:14px;margin-top:12px">
+        <label class="fld"><span class="ja">軽量タスク tok/回</span><span class="en">Light task tok/run</span><input type="number" id="tl" min="0" step="1000" style="width:110px"></label>
+        <label class="fld"><span class="ja">標準タスク tok/回</span><span class="en">Medium task tok/run</span><input type="number" id="tm" min="0" step="1000" style="width:110px"></label>
+        <label class="fld"><span class="ja">重量タスク tok/回</span><span class="en">Heavy task tok/run</span><input type="number" id="th" min="0" step="1000" style="width:110px"></label>
+        <span class="badge"><span class="ja">仮置き・上書き可</span><span class="en">assumed, editable</span></span>
+      </div>
+    </div>
+  </div>
+  <div class="sec">
+    <div class="figs" id="costFigs"></div>
+  </div>
+  <div class="sec">
+    <div class="sec-head"><h2><span class="ja">タスク別 月次負荷</span><span class="en">Monthly load by task</span></h2></div>
+    <div class="tablewrap"><table><thead><tr id="cthead"></tr></thead><tbody id="ctbody"></tbody></table></div>
+  </div>
+</section>
+
+<!-- ============================ TAB 7: RUNBOOK ============================ -->
+<section id="tab-runbook" role="tabpanel" hidden>
+  <div class="sec">
+    <div class="sec-head">
+      <h2><span class="ja">現地実行ランブック（PowerShell）</span><span class="en">On-site runbook (PowerShell)</span></h2>
+      <span class="hint ja">このダッシュボードから届かない操作 — 実機での取得・起動・投入・常駐化 — をコピー1回で終わる形にしたもの。下の値を入れるとコマンドに反映される。</span>
+      <span class="hint en">The steps this dashboard cannot reach — fetching, starting, applying and keeping the host alive on your own machine — as blocks you copy once. The values below are substituted into every command.</span>
+    </div>
+    <div class="panel">
+      <div class="row" style="align-items:flex-end;gap:14px">
+        <label class="fld" style="flex:1 1 230px"><span class="ja">リポジトリのパス</span><span class="en">Repository path</span>
+          <input type="text" id="envRepo" spellcheck="false"></label>
+        <label class="fld"><span class="ja">ホスト</span><span class="en">Host</span>
+          <input type="text" id="envHost" style="width:130px" spellcheck="false"></label>
+        <label class="fld"><span class="ja">ポート</span><span class="en">Port</span>
+          <input type="text" id="envPort" style="width:92px" spellcheck="false"></label>
+        <label class="fld" style="flex:1 1 220px"><span class="ja">ブランチ</span><span class="en">Branch</span>
+          <input type="text" id="envBranch" spellcheck="false"></label>
+      </div>
+      <div class="row" style="margin-top:12px;gap:8px;align-items:center">
+        <span style="font-size:11.5px;color:var(--ink2)"><span class="ja">実行モード</span><span class="en">Run mode</span></span>
+        <div class="chipbar" id="modePicker"></div>
+      </div>
+      <div id="modeNote" style="margin-top:12px"></div>
+    </div>
+  </div>
+  <div class="sec" id="runbook"></div>
+</section>
+</main>
+
+<footer>
+  <div class="ja">© 株式会社みのりかわPROHANDS / MinoPRO1 — 社内運用資料。本ダッシュボードは AI（Claude Code）が生成した設計支援ツールであり、記載の分類・依存・移行判定は提案です。実行判断は人が行ってください。AI Watermark: WM-03（内部利用）。</div>
+  <div class="en">© Minorikawa PROHANDS Inc. / MinoPRO1 — internal document. This dashboard was generated by AI (Claude Code); its classifications, dependencies and migration verdicts are proposals. A human makes the call to execute. AI Watermark: WM-03 (internal).</div>
+</footer>
+
+<div class="drawer" id="drawer" hidden></div>
+
+<script>
+/* =========================================================================
+   MinoPRO Orchestration Command Deck
+   - Single file, no external JS. Runs from agent-zero webui (same origin)
+     for live mode, or from file:// as a read-and-export console.
+   ========================================================================= */
+
+/* ---------- 1. TASK LEDGER ----------
+   conf:true  = fire time read directly from the claude.ai task list (measured)
+   conf:false = time NOT visible on screen -> value below is a PROPOSAL      */
+const TASKS = [
+ {id:"gz140", ja:"広交会140 視察情報 毎日巡回（01:00 JST）／登録開放とビザ工程を監視", en:"Canton Fair 140 daily sweep",
+  freq:"daily", h:1, m:0, conf:true, mins:4, desktop:true, tier:"L4", wave:"W1", weight:"heavy",
+  projJa:"新商品開発OEM", projEn:"New product / OEM", gates:["web","human"], deps:[],
+  dJa:"第140回 広交会（2026年10月・広州）の視察情報を毎日巡回し、登録開放とビザ工程を監視する。",
+  dEn:"Daily sweep on the 140th Canton Fair, watching registration opening and the visa process."},
+ {id:"kisei", ja:"規制対応レーダー 毎日AM2時巡回", en:"Regulatory radar 02:00 sweep",
+  freq:"daily", h:2, m:0, conf:true, mins:1, desktop:true, tier:"L4", wave:"W1", weight:"medium",
+  projJa:"コンプライアンス", projEn:"Compliance", gates:["web"], deps:[],
+  dJa:"APPI/GDPR/EU AI Act ほか規制動向のコンプライアンス巡回。",
+  dEn:"Compliance sweep over APPI / GDPR / EU AI Act and related regulatory movement."},
+ {id:"cmdtower", ja:"統合司令塔ダッシュボード週次自動更新", en:"Command tower dashboard weekly",
+  freq:"weekly", dow:1, h:4, m:0, conf:true, mins:7, desktop:false, tier:"L1", wave:"W2", weight:"light",
+  projJa:"全社", projEn:"Company-wide", gates:[], deps:["saos","dgs3","board","memory","infra"],
+  dJa:"全PJの状態を束ねる司令塔ダッシュボードを週次更新する。",
+  dEn:"Weekly rollup of every project into the command-tower dashboard."},
+ {id:"pdcc", ja:"Prohands daily command center", en:"Prohands daily command center",
+  freq:"daily", h:5, m:0, conf:true, mins:3, desktop:true, tier:"L4", wave:"W2", weight:"heavy",
+  projJa:"全社", projEn:"Company-wide", gates:["web"], deps:["gz140","kisei","newsify"],
+  dJa:"CEO 向け毎朝の統合コマンドセンター。前日の全巡回結果を集約する上位ジョブ。",
+  dEn:"Morning command center for the CEO; aggregates every overnight sweep."},
+ {id:"biztown", ja:"ビジネスタウン・ダッシュボード毎朝自動更新（Deep Research＋ファクトチェック）", en:"Business-town dashboard refresh",
+  freq:"daily", h:5, m:0, conf:true, mins:13, desktop:false, tier:"L3", wave:"W2", weight:"heavy",
+  projJa:"odoo マルチプラットフォーム", projEn:"Odoo multi-platform", gates:["web"], deps:["kisei","oss-cn","yakushin"],
+  dJa:"Deep Research とファクトチェックでビジネスタウン構想のダッシュボードを毎朝更新する。",
+  dEn:"Deep-Research refresh of the business-town platform dashboard each morning."},
+ {id:"saos", ja:"SAOS 100点到達ダッシュボード 週次巡回（月曜05:30 JST）", en:"SAOS 100-point dashboard",
+  freq:"weekly", dow:1, h:5, m:30, conf:true, mins:null, desktop:false, tier:"L2", wave:"W1", weight:"medium",
+  projJa:"SAOS", projEn:"SAOS", gates:["web"], deps:[],
+  dJa:"主権エージェントOS の到達度スコアを週次で更新する。",
+  dEn:"Weekly scoring update for the sovereign agent OS roadmap."},
+ {id:"newsify", ja:"Newsify daily scan", en:"Newsify daily scan",
+  freq:"daily", h:5, m:30, conf:true, mins:2, desktop:false, tier:"L2", wave:"W1", weight:"medium",
+  projJa:"AI ニュース", projEn:"AI news", gates:["web"], deps:[],
+  dJa:"newsify.tv を巡回し AI 最前線ニュースを自動収集する。",
+  dEn:"Crawls newsify.tv and collects frontier AI news."},
+ {id:"morning", ja:"モーニングブリーフ", en:"Morning brief",
+  freq:"weekday", h:6, m:30, conf:true, mins:6, desktop:false, tier:"L3", wave:"W3", weight:"medium",
+  projJa:"経営", projEn:"Executive", gates:["web","pii"], deps:["newsify","kisei","pdcc","biztown"],
+  dJa:"平日朝のモーニングブリーフ（/morning）。",
+  dEn:"Weekday morning brief (/morning)."},
+ {id:"kanko-daily", ja:"観光PJ 毎日自動巡回（Deep Research＋EVOLVE-100自己診断）", en:"Tourism PJ daily sweep",
+  freq:"daily", h:6, m:40, conf:true, mins:19, desktop:false, tier:"L3", wave:"W1", weight:"heavy",
+  projJa:"観光ビジネス統合PJ", projEn:"Tourism product PJ", gates:["web"], deps:[],
+  dJa:"MNRKW-PJ-2026-031 の Deep Research 巡回と EVOLVE-100 自己診断。",
+  dEn:"Deep-Research sweep for MNRKW-PJ-2026-031 plus the EVOLVE-100 self-check."},
+ {id:"infra", ja:"統合インフラ 週次自律巡回", en:"Infrastructure weekly self-audit",
+  freq:"weekly", dow:1, h:7, m:30, conf:true, mins:null, desktop:false, tier:"L1", wave:"W0", weight:"medium",
+  projJa:"インフラ", projEn:"Infrastructure", gates:["sys"], deps:[],
+  dJa:"統合インフラの自律巡回。ネットワーク・ホスト・サービスの健全性確認。",
+  dEn:"Autonomous infrastructure sweep across network, hosts and services."},
+ {id:"claude-dash", ja:"Claude統合ダッシュボード 週次自律更新", en:"Claude usage dashboard weekly",
+  freq:"weekly", dow:1, h:7, m:30, conf:true, mins:12, desktop:false, tier:"L2", wave:"W2", weight:"light",
+  projJa:"AI 運用", projEn:"AI ops", gates:["web"], deps:[],
+  dJa:"Claude 活用状況の統合ダッシュボードを週次更新する。",
+  dEn:"Weekly refresh of the Claude-usage dashboard."},
+ {id:"yakushin", ja:"躍進 第14回 告示・見積 ウォッチ（みのりかわPROHANDS）", en:"Yakushin round 14 notice watch",
+  freq:"daily", h:7, m:30, conf:true, mins:3, desktop:false, tier:"L3", wave:"W1", weight:"medium",
+  projJa:"起業創業助成金Getter", projEn:"Subsidy getter", gates:["web","human"], deps:[],
+  dJa:"設備投資支援事業 第14回の告示・見積要件を監視する。",
+  dEn:"Watches the notice and quotation requirements for capex-subsidy round 14."},
+ {id:"selfheal", ja:"Self heal weekly maintenance", en:"Self-heal weekly maintenance",
+  freq:"weekly", dow:1, h:8, m:0, conf:true, mins:1, desktop:false, tier:"L1", wave:"W0", weight:"light",
+  projJa:"基盤保全", projEn:"Platform upkeep", gates:["sys","del"], deps:[],
+  dJa:"基盤の自己修復メンテナンス。破壊的操作を含みうるため削除系ゲート対象。",
+  dEn:"Self-healing maintenance pass. Can touch destructive operations, so it is gated."},
+ {id:"memory", ja:"MinoPRO統合メモリ 週次自動棚卸", en:"Unified memory weekly audit",
+  freq:"weekly", dow:1, h:8, m:0, conf:true, mins:1, desktop:false, tier:"L1", wave:"W2", weight:"light",
+  projJa:"記憶基盤", projEn:"Memory layer", gates:["del","pii"], deps:[],
+  dJa:"統合メモリの棚卸し。上書き主義のため削除系ゲート対象。",
+  dEn:"Audit of the unified memory store. Overwrite-first, so delete-gated."},
+ {id:"dgs3", ja:"3DGSカオスマップ 週次Deep Research自動更新", en:"3DGS chaos map weekly research",
+  freq:"weekly", dow:1, h:8, m:0, conf:true, mins:27, desktop:false, tier:"L3", wave:"W1", weight:"heavy",
+  projJa:"3DGS / 測量", projEn:"3DGS / survey", gates:["web"], deps:[],
+  dJa:"3D Gaussian Splatting 関連プレイヤーのカオスマップを週次で更新する。",
+  dEn:"Weekly refresh of the 3D Gaussian Splatting vendor chaos map."},
+ {id:"board", ja:"基板巡回 Odoo19/n8n/PG EOL・CVE監視", en:"Stack sweep: Odoo19 / n8n / PG EOL + CVE",
+  freq:"weekly", dow:2, h:3, m:0, conf:true, mins:7, desktop:false, tier:"L2", wave:"W1", weight:"medium",
+  projJa:"基盤", projEn:"Platform", gates:["web","sys"], deps:[],
+  dJa:"Odoo 19・n8n・PostgreSQL の EOL と CVE を週次巡回する。",
+  dEn:"Weekly sweep of Odoo 19, n8n and PostgreSQL EOL and CVE notices."},
+ {id:"learn", ja:"週次 学習チェックイン（Claude活用）", en:"Weekly learning check-in",
+  freq:"weekly", dow:5, h:17, m:0, conf:true, mins:19, desktop:false, tier:"L2", wave:"W3", weight:"light",
+  projJa:"人材育成", projEn:"Enablement", gates:[], deps:["claude-dash"],
+  dJa:"毎週金曜 17:00 JST の Claude 活用 学習チェックイン。",
+  dEn:"Claude-usage learning check-in, Fridays 17:00 JST."},
+ {id:"weekly-report", ja:"Weekly report", en:"Weekly report",
+  freq:"weekly", dow:5, h:17, m:0, conf:true, mins:null, desktop:false, tier:"L2", wave:"W3", weight:"light",
+  projJa:"全社", projEn:"Company-wide", gates:[], deps:[],
+  dJa:"週次進捗レポート。実行記録がまだ無い（last_run 無し）。",
+  dEn:"Weekly progress report. No run has been recorded yet (no last_run)."},
+ {id:"kanko-audit", ja:"観光PJ 週次自己監査（KANKO-STATE）", en:"Tourism PJ weekly self-audit",
+  freq:"weekly", dow:6, h:19, m:0, conf:true, mins:12, desktop:false, tier:"L2", wave:"W2", weight:"medium",
+  projJa:"観光ビジネス統合PJ", projEn:"Tourism product PJ", gates:["web"], deps:["kanko-daily"],
+  dJa:"KANKO-STATE と成果物の整合を週次で自己監査する。",
+  dEn:"Weekly self-audit of KANKO-STATE against delivered artefacts."},
+ {id:"oss-cn", ja:"中国系OSS AI + 輸出規制 月次ウォッチ", en:"China OSS AI + export-control watch",
+  freq:"monthly", dom:2, h:6, m:40, conf:true, mins:4, desktop:false, tier:"L2", wave:"W1", weight:"medium",
+  projJa:"Auto Skill Forge", projEn:"Auto Skill Forge", gates:["web"], deps:[],
+  dJa:"中国系 OSS AI と輸出規制の自律監視。実測は毎月2日 06:40 JST の月次。",
+  dEn:"Autonomous watch on Chinese OSS AI and export controls — measured as monthly, day 2 at 06:40 JST."}
+];
+
+/* ---------- 2. DICTIONARIES ---------- */
+const TIERS = {
+  L1:{ja:"L1 ローカル完結", en:"L1 fully local", cls:"ok",   descJa:"ローカルLLM＋agent-zeroで完結。外部LLM不要。", descEn:"Local LLM + agent-zero only. No external LLM."},
+  L2:{ja:"L2 ローカル＋取得", en:"L2 local + fetch", cls:"info", descJa:"ローカル推論＋Web取得。取得先の規約順守が条件。", descEn:"Local inference plus web fetch, subject to source terms."},
+  L3:{ja:"L3 クラウド必須", en:"L3 cloud required", cls:"warn", descJa:"Deep Research級。Console API 従量で残す。", descEn:"Deep-Research class. Keep on the metered Console API."},
+  L4:{ja:"L4 Desktop依存", en:"L4 desktop-bound", cls:"crit", descJa:"Claude Desktop (Windows) 常時稼働が前提＝単一障害点。", descEn:"Requires Claude Desktop (Windows) to stay up — a single point of failure."}
+};
+const RUNNERS = {
+  agentzero:{ja:"agent-zero", en:"agent-zero"},
+  hybrid:{ja:"agent-zero＋API", en:"agent-zero + API"},
+  n8n:{ja:"n8n", en:"n8n"},
+  claude:{ja:"claude.ai 残置", en:"stay on claude.ai"}
+};
+const WAVES = {
+  W0:{ja:"保全", en:"Upkeep", codeJa:"事前・独立", codeEn:"independent"},
+  W1:{ja:"収集", en:"Collect", codeJa:"一次情報の取得", codeEn:"primary intake"},
+  W2:{ja:"統合", en:"Synthesize", codeJa:"集約・監査", codeEn:"rollup + audit"},
+  W3:{ja:"配信", en:"Deliver", codeJa:"人が読む出力", codeEn:"human-facing output"}
+};
+const GATES = {
+  web:{ja:"外部取得", en:"Fetch"}, send:{ja:"外部送信", en:"Send out"},
+  pay:{ja:"課金", en:"Payment"}, del:{ja:"削除系", en:"Delete"},
+  cred:{ja:"認証情報", en:"Credentials"}, sys:{ja:"システム変更", en:"System change"},
+  pii:{ja:"個人情報", en:"Personal data"}, human:{ja:"人手必須", en:"Human required"}
+};
+const WEIGHTS = {light:{min:3, ja:"軽量", en:"light"}, medium:{min:8, ja:"標準", en:"medium"}, heavy:{min:25, ja:"重量", en:"heavy"}};
+const DOW_JA = ["日","月","火","水","木","金","土"];
+const DOW_EN = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+const RUNS_PER_MONTH = {daily:30.4, weekday:21.7, weekly:4.33, monthly:1};
+const TABS = [
+  {id:"command",   n:"01", ja:"司令塔",       en:"Command"},
+  {id:"registry",  n:"02", ja:"タスク台帳",   en:"Registry"},
+  {id:"orch",      n:"03", ja:"編成",         en:"Orchestration"},
+  {id:"migration", n:"04", ja:"移行",         en:"Migration"},
+  {id:"safety",    n:"05", ja:"安全運用",     en:"Safety"},
+  {id:"cost",      n:"06", ja:"コスト",       en:"Cost"},
+  {id:"runbook",   n:"07", ja:"現地実行",     en:"Runbook"}
+];
+
+/* ---------- 3. STATE ---------- */
+const KEY = "minopro.orch.v1";
+const DEFAULTS = {
+  ov:{}, phases:{}, checks:{}, theme:"auto",
+  conc:2, step:10,
+  cost:{pin:"", pout:"", fx:"", tl:8000, tm:30000, th:120000},
+  filters:{freq:"all", tier:"all", flag:"all"}, q:"",
+  env:{mode:"n8n", repo:"C:\\agent-zero", host:"127.0.0.1", port:"50001", branch:"claude/task-automation-dashboard-gvoy32"},
+  sort:{key:"time", dir:1}, exportKind:"tasks"
+};
+let state = structuredClone(DEFAULTS);
+let currentLang = "ja";
+let selected = null;
+let live = {ok:false, token:null, tasks:null};
+
+function load(){
+  try{
+    const raw = localStorage.getItem(KEY);
+    if(raw){
+      const saved = JSON.parse(raw), base = structuredClone(DEFAULTS);
+      for(const k of Object.keys(saved)){
+        const d = base[k], v = saved[k];
+        base[k] = (d && typeof d==="object" && !Array.isArray(d) && v && typeof v==="object" && !Array.isArray(v))
+          ? Object.assign({}, d, v) : v;
+      }
+      state = base;
+    }
+  }catch(e){ /* private window / blocked storage — run with defaults */ }
+}
+function save(){
+  try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){}
+}
+
+/* ---------- 4. HELPERS ---------- */
+const $ = s => document.querySelector(s);
+const el = (tag, cls, html) => { const n=document.createElement(tag); if(cls) n.className=cls; if(html!=null) n.innerHTML=html; return n; };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const L = (o, k) => o[k + (currentLang === "en" ? "En" : "Ja")] ?? o[currentLang] ?? o.ja;
+const pad = n => String(n).padStart(2,"0");
+const clip = (s0,n) => { const t=String(s0); return t.length>n ? t.slice(0,n)+"…" : t; };
+const textW = s0 => String(s0).split("").reduce((w,ch) => w + (ch.charCodeAt(0)>0x2000 ? 11 : 6.2), 0);
+
+/** task merged with the user's local edits */
+function T(t){
+  const o = state.ov[t.id] || {};
+  const m0 = t.m + (o.off || 0);
+  const h = t.h + Math.floor(m0/60), m = ((m0 % 60) + 60) % 60;
+  return Object.assign({}, t, o, {h:((h%24)+24)%24, m, off:o.off||0,
+    tier:o.tier || t.tier, runner:o.runner || defaultRunner(t.tier), enabled:o.enabled !== false});
+}
+function defaultRunner(tier){ return tier==="L4" ? "claude" : tier==="L3" ? "hybrid" : "agentzero"; }
+const all = () => TASKS.map(T);
+const activeTasks = () => all().filter(t => t.enabled);
+const minOfDay = t => t.h*60 + t.m;
+const timeStr = t => pad(t.h)+":"+pad(t.m);
+function whenStr(t){
+  const d = currentLang==="en" ? DOW_EN : DOW_JA;
+  if(t.freq==="daily")  return (currentLang==="en"?"daily ":"毎日 ")+timeStr(t);
+  if(t.freq==="weekday")return (currentLang==="en"?"Mon–Fri ":"平日 ")+timeStr(t);
+  if(t.freq==="monthly")return (currentLang==="en"?`monthly day ${t.dom} `:`毎月${t.dom}日 `)+timeStr(t);
+  return (currentLang==="en"? d[t.dow]+" " : d[t.dow]+"曜 ")+timeStr(t);
+}
+/** measured runtime in minutes when the Routines API reported one, else the class assumption */
+function runMin(t){ return (t.mins === null || t.mins === undefined) ? WEIGHTS[t.weight].min : t.mins; }
+function runMeasured(t){ return !(t.mins === null || t.mins === undefined); }
+function cronOf(t){
+  if(t.freq==="daily")   return `${t.m} ${t.h} * * *`;
+  if(t.freq==="weekday") return `${t.m} ${t.h} * * 1-5`;
+  if(t.freq==="monthly") return `${t.m} ${t.h} ${t.dom} * *`;
+  return `${t.m} ${t.h} * * ${t.dow}`;
+}
+function schedOf(t){
+  return {minute:String(t.m), hour:String(t.h),
+          day: t.freq==="monthly" ? String(t.dom) : "*", month:"*",
+          weekday: (t.freq==="daily" || t.freq==="monthly") ? "*" : t.freq==="weekday" ? "1-5" : String(t.dow),
+          timezone:"Asia/Tokyo"};
+}
+function runsPerMonth(t){ return RUNS_PER_MONTH[t.freq]; }
+/** Stable UUID derived from the task id, so re-exporting the same ledger
+    yields the same file: the JSON stays diffable and a second apply updates
+    the task instead of adding a duplicate alongside it. */
+function uuidOf(id){
+  const seed = "minopro.orchestrator:" + id;
+  const words = [];
+  for(let w=0; w<4; w++){
+    let h = 0x811c9dc5 ^ (w*0x9e3779b9);
+    for(let i=0; i<seed.length; i++){ h ^= seed.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+    words.push((h >>> 0).toString(16).padStart(8,"0"));
+  }
+  const hex = words.join("");
+  return [hex.slice(0,8), hex.slice(8,12), "4"+hex.slice(13,16),
+          ((parseInt(hex[16],16) & 0x3 | 0x8).toString(16))+hex.slice(17,20), hex.slice(20,32)].join("-");
+}
+
+/* ---------- 5. LANGUAGE ---------- */
+function setLang(l){
+  currentLang = l;
+  document.body.classList.toggle("lang-en", l==="en");
+  document.documentElement.lang = l;
+  document.querySelectorAll(".lang-btn").forEach(b => b.classList.toggle("active", b.dataset.lang===l));
+  document.title = l==="en" ? "Orchestration Command Deck" : "統合オーケストレーション司令塔";
+  $("#q").placeholder = l==="en" ? "Search tasks, projects, cron…" : "タスク・プロジェクト・cron を検索…";
+  renderAll();
+}
+
+/* ---------- 6. CONCURRENCY MODEL ---------- */
+/** intervals for one weekday (daily + weekday + that day's weekly jobs) */
+function intervalsFor(dow){
+  return activeTasks()
+    .filter(t => t.freq==="daily" || (t.freq==="weekday" && dow>=1 && dow<=5) || (t.freq==="weekly" && t.dow===dow))
+    .map(t => ({t, s:minOfDay(t), e:minOfDay(t)+runMin(t)}))
+    .sort((a,b) => a.s-b.s);
+}
+/** groups whose concurrency exceeds the limit, across the whole week */
+function collisions(){
+  const out = [];
+  for(let d=0; d<7; d++){
+    const iv = intervalsFor(d); const act = [];
+    for(const x of iv){
+      while(act.length && act[0].e <= x.s) act.shift();
+      act.push(x); act.sort((a,b)=>a.e-b.e);
+      if(act.length > state.conc) out.push({dow:d, at:x.s, items:act.map(a=>a.t)});
+    }
+  }
+  return out;
+}
+function peakConcurrency(){
+  let peak = 0;
+  for(let d=0; d<7; d++){
+    const iv = intervalsFor(d); const act = [];
+    for(const x of iv){
+      while(act.length && act[0].e <= x.s) act.shift();
+      act.push(x); act.sort((a,b)=>a.e-b.e);
+      peak = Math.max(peak, act.length);
+    }
+  }
+  return peak;
+}
+/** greedy stagger: push a task later until it fits under the limit */
+function autoResolve(){
+  const limit = state.conc, step = Math.max(1, state.step);
+  for(let d=0; d<7; d++){
+    for(let guard=0; guard<80; guard++){
+      const iv = intervalsFor(d); const act = []; let moved = false;
+      for(const x of iv){
+        while(act.length && act[0].e <= x.s) act.shift();
+        if(act.length >= limit){
+          const base = TASKS.find(z => z.id===x.t.id);
+          const cur = state.ov[base.id] || {};
+          const add = Math.max(step, Math.ceil((act[0].e - x.s)/step)*step);
+          if((cur.off||0) + add > 180) { act.push(x); act.sort((a,b)=>a.e-b.e); continue; }
+          state.ov[base.id] = Object.assign({}, cur, {off:(cur.off||0)+add});
+          moved = true; break;
+        }
+        act.push(x); act.sort((a,b)=>a.e-b.e);
+      }
+      if(!moved) break;
+    }
+  }
+  save(); renderAll();
+}
+
+/* ---------- 7. RENDER: COMMAND ---------- */
+function renderTabs(){
+  const bar = $("#tabbar"); bar.innerHTML = "";
+  TABS.forEach(t => {
+    const b = el("button","tab",`<span class="n">${t.n}</span><span class="ja">${t.ja}</span><span class="en">${t.en}</span>`);
+    b.setAttribute("role","tab"); b.dataset.tab = t.id;
+    b.setAttribute("aria-selected", String(t.id===state.tab));
+    b.onclick = () => { state.tab = t.id; save(); showTab(); };
+    bar.appendChild(b);
+  });
+}
+function showTab(){
+  TABS.forEach(t => { $("#tab-"+t.id).hidden = (t.id !== state.tab); });
+  document.querySelectorAll(".tab").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab===state.tab)));
+}
+function renderKPI(){
+  const t = all(), on = activeTasks();
+  const local = on.filter(x => x.runner==="agentzero").length;
+  const l4 = on.filter(x => x.tier==="L4").length;
+  const unconf = t.filter(x => !x.conf).length;
+  const col = collisions().length;
+  const dailyRuns = on.filter(x=>x.freq==="daily").length + on.filter(x=>x.freq==="weekday").length;
+  const perMonth = on.reduce((s,x) => s + runsPerMonth(x), 0);
+  const K = [
+    {lbl:{ja:"登録タスク", en:"Tasks"}, val:t.length, foot:{ja:`有効 ${on.length} 本`, en:`${on.length} enabled`}, cls:""},
+    {lbl:{ja:"平日あたり起動", en:"Weekday launches"}, val:dailyRuns, foot:{ja:`月間 約 ${Math.round(perMonth)} 回`, en:`~${Math.round(perMonth)} runs/month`}, cls:""},
+    {lbl:{ja:"ローカル実行", en:"Local execution"}, val:`${Math.round(local/Math.max(1,on.length)*100)}%`, foot:{ja:`${local} / ${on.length} 本が agent-zero`, en:`${local} of ${on.length} on agent-zero`}, cls:local>=on.length/2?"good":""},
+    {lbl:{ja:"単一障害点", en:"Single points of failure"}, val:l4, foot:{ja:"Claude Desktop (Windows) 常時稼働が前提", en:"Require Claude Desktop (Windows) to stay up"}, cls:l4?"alert":"good"},
+    {lbl:{ja:"時刻衝突", en:"Schedule collisions"}, val:col, foot:{ja:`同時実行上限 ${state.conc} 本に対して`, en:`against a limit of ${state.conc}`}, cls:col?"caution":"good"},
+    {lbl:{ja:"スケジュール未確認", en:"Unconfirmed times"}, val:unconf, foot:{ja:"画面で時刻を確認できず提案値を表示中", en:"time not visible on screen — proposal shown"}, cls:unconf?"caution":"good"}
+  ];
+  $("#kpis").innerHTML = K.map(k => `<div class="kpi ${k.cls}">
+     <span class="lbl">${L(k.lbl,"")||k.lbl[currentLang]}</span>
+     <span class="val">${k.val}</span>
+     <span class="foot">${k.foot[currentLang]}</span></div>`).join("");
+}
+const WAVE_COLOR = {W0:"var(--ink3)", W1:"var(--info)", W2:"var(--accent)", W3:"var(--warn)"};
+function renderTimeline(){
+  const W = 960, padL = 42, padR = 18, plot = W - padL - padR, rowH = 27;
+  const items = activeTasks().filter(t => t.freq==="daily" || t.freq==="weekday")
+    .sort((a,b) => minOfDay(a)-minOfDay(b));
+  const rows = [];
+  items.forEach(t => {
+    const x = padL + minOfDay(t)/1440*plot;
+    const label = clip(currentLang==="en" ? t.en : t.ja, currentLang==="en" ? 22 : 13);
+    const w = textW(label) + 18;
+    let r = 0;
+    while(rows.some(o => o.r===r && x < o.x + o.w && o.x < x + w)) r++;
+    rows.push({t, x, r, label, w});
+  });
+  const maxR = rows.reduce((m,o) => Math.max(m,o.r), 0);
+  const axisY = 34 + (maxR+1)*rowH + 10, H = axisY + 44;
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="24h timeline" style="width:100%">`;
+  for(let h=0; h<=24; h++){
+    const x = padL + h/24*plot;
+    s += `<line x1="${x}" y1="20" x2="${x}" y2="${axisY}" stroke="var(--line)" stroke-width="${h%6===0?1.4:.6}"/>`;
+    if(h%2===0) s += `<text x="${x}" y="${axisY+16}" fill="var(--ink3)" font-size="10" font-family="var(--mono)" text-anchor="middle">${pad(h)}</text>`;
+  }
+  s += `<line x1="${padL}" y1="${axisY}" x2="${W-padR}" y2="${axisY}" stroke="var(--line2)" stroke-width="1.2"/>`;
+  s += `<text x="${padL}" y="${axisY+32}" fill="var(--ink3)" font-size="10" font-family="var(--mono)">JST</text>`;
+  rows.forEach(o => {
+    const t = o.t, top = 32 + o.r*rowH, c = WAVE_COLOR[t.wave];
+    s += `<line x1="${o.x}" y1="${top+6}" x2="${o.x}" y2="${axisY}" stroke="${c}" stroke-width="1" stroke-dasharray="2 3"/>`;
+    s += `<circle cx="${o.x}" cy="${top}" r="${t.tier==="L4"?6:4.5}" fill="${c}" stroke="${t.tier==="L4"?"var(--crit)":"var(--panel)"}" stroke-width="${t.tier==="L4"?2.5:1.5}"/>`;
+    s += `<text x="${o.x+10}" y="${top+1}" fill="var(--ink2)" font-size="11">${esc(o.label)}</text>`;
+    s += `<text x="${o.x+10}" y="${top+13}" fill="var(--ink3)" font-size="9.5" font-family="var(--mono)">${timeStr(t)}${t.off?` (+${t.off}m)`:""}</text>`;
+  });
+  s += `</svg>`;
+  $("#timeline").innerHTML = s;
+  $("#tlLegend").innerHTML = Object.keys(WAVES).map(w =>
+    `<span><i style="background:${WAVE_COLOR[w]}"></i>${WAVES[w][currentLang]}</span>`).join("")
+    + `<span><i style="background:var(--crit)"></i>${currentLang==="en"?"desktop-bound (L4)":"Desktop依存 (L4)"}</span>`;
+}
+function renderHeat(){
+  const order = [1,2,3,4,5,6,0];
+  const grid = {}; // dow -> hour -> count
+  order.forEach(d => { grid[d] = new Array(24).fill(0); });
+  activeTasks().forEach(t => {
+    const h = t.h;
+    if(t.freq==="daily") order.forEach(d => grid[d][h]++);
+    else if(t.freq==="weekday") [1,2,3,4,5].forEach(d => grid[d][h]++);
+    else if(t.freq==="weekly") grid[t.dow][h]++;
+  });
+  const D = currentLang==="en" ? DOW_EN : DOW_JA;
+  let s = `<div class="hd"></div>` + order.map(d => `<div class="hd">${D[d]}</div>`).join("");
+  for(let h=0; h<24; h++){
+    s += `<div class="hr">${pad(h)}</div>`;
+    s += order.map(d => {
+      const n = grid[d][h];
+      const cls = n===0?"":n===1?"l1":n===2?"l2":"l3";
+      return `<div class="cell ${cls}" title="${D[d]} ${pad(h)}:00 — ${n}"></div>`;
+    }).join("");
+  }
+  $("#heat").innerHTML = s;
+}
+function renderMix(){
+  const on = activeTasks();
+  const bars = [
+    {ttl:{ja:"Tier 構成", en:"By tier"}, keys:["L1","L2","L3","L4"],
+     count:k => on.filter(t=>t.tier===k).length,
+     color:{L1:"var(--ok)", L2:"var(--info)", L3:"var(--warn)", L4:"var(--crit)"},
+     label:k => TIERS[k][currentLang].replace(/^L\d\s/,"L"+k[1]+" ")},
+    {ttl:{ja:"実行先", en:"By runner"}, keys:["agentzero","hybrid","n8n","claude"],
+     count:k => on.filter(t=>t.runner===k).length,
+     color:{agentzero:"var(--ok)", hybrid:"var(--info)", n8n:"var(--accent)", claude:"var(--crit)"},
+     label:k => RUNNERS[k][currentLang]}
+  ];
+  const W = 420, bh = 22;
+  let s = `<svg viewBox="0 0 ${W} 132" style="width:100%" role="img">`;
+  bars.forEach((b,bi) => {
+    const y = 18 + bi*62, total = Math.max(1, on.length);
+    s += `<text x="0" y="${y-5}" fill="var(--ink2)" font-size="11">${b.ttl[currentLang]}</text>`;
+    let x = 0;
+    b.keys.forEach(k => {
+      const n = b.count(k); if(!n) return;
+      const w = n/total*W;
+      s += `<rect x="${x}" y="${y}" width="${Math.max(0,w-2)}" height="${bh}" rx="3" fill="${b.color[k]}"/>`;
+      if(w > 26) s += `<text x="${x+7}" y="${y+15}" fill="#fff" font-size="11" font-family="var(--mono)">${n}</text>`;
+      x += w;
+    });
+    s += `<text x="0" y="${y+bh+14}" fill="var(--ink3)" font-size="10">` +
+         b.keys.filter(k=>b.count(k)).map(k => `${b.label(k)} ${b.count(k)}`).join("  ·  ") + `</text>`;
+  });
+  s += `</svg>`;
+  $("#mix").innerHTML = s;
+  $("#mixLegend").innerHTML = currentLang==="en"
+    ? `<span>Local execution removes the metered-API and desktop-uptime dependency; L4 rows are the ones still holding the exit back.</span>`
+    : `<span>ローカル実行は従量課金と Desktop 常時稼働の両方を切り離す。離脱を止めているのは L4 の行。</span>`;
+}
+
+/* ---------- 8. RENDER: REGISTRY ---------- */
+const FILTERS = [
+  {k:"freq", opts:[["all",{ja:"全頻度",en:"All"}],["daily",{ja:"毎日",en:"Daily"}],["weekday",{ja:"平日",en:"Weekdays"}],["weekly",{ja:"週次",en:"Weekly"}],["monthly",{ja:"月次",en:"Monthly"}]]},
+  {k:"tier", opts:[["all",{ja:"全Tier",en:"All tiers"}],["L1",{ja:"L1",en:"L1"}],["L2",{ja:"L2",en:"L2"}],["L3",{ja:"L3",en:"L3"}],["L4",{ja:"L4",en:"L4"}]]},
+  {k:"flag", opts:[["all",{ja:"全件",en:"Everything"}],["desktop",{ja:"Desktop依存",en:"Desktop-bound"}],["unconf",{ja:"時刻未確認",en:"Unconfirmed"}],["gated",{ja:"ゲート有",en:"Gated"}],["off",{ja:"無効",en:"Disabled"}]]}
+];
+function filtered(){
+  const q = (state.q||"").trim().toLowerCase();
+  let rows = all().filter(t => {
+    const f = state.filters;
+    if(f.freq!=="all" && t.freq!==f.freq) return false;
+    if(f.tier!=="all" && t.tier!==f.tier) return false;
+    if(f.flag==="desktop" && !t.desktop) return false;
+    if(f.flag==="unconf" && t.conf) return false;
+    if(f.flag==="gated" && !t.gates.length) return false;
+    if(f.flag==="off" && t.enabled) return false;
+    if(q){
+      const hay = [t.ja,t.en,t.projJa,t.projEn,cronOf(t),t.tier,t.id].join(" ").toLowerCase();
+      if(!hay.includes(q)) return false;
+    }
+    return true;
+  });
+  const k = state.sort.key, dir = state.sort.dir;
+  rows.sort((a,b) => {
+    let v = 0;
+    if(k==="time") v = minOfDay(a)-minOfDay(b);
+    else if(k==="name") v = (currentLang==="en"?a.en:a.ja).localeCompare(currentLang==="en"?b.en:b.ja, "ja");
+    else if(k==="tier") v = a.tier.localeCompare(b.tier);
+    else if(k==="freq") v = a.freq.localeCompare(b.freq);
+    else if(k==="runner") v = a.runner.localeCompare(b.runner);
+    return v*dir;
+  });
+  return rows;
+}
+function renderFilters(){
+  $("#filters").innerHTML = FILTERS.map(g => g.opts.map(([v,lab]) =>
+    `<button class="chip" data-g="${g.k}" data-v="${v}" aria-pressed="${state.filters[g.k]===v}">${lab[currentLang]}</button>`
+  ).join("")).join(`<span style="width:10px"></span>`);
+  $("#filters").querySelectorAll(".chip").forEach(c => c.onclick = () => {
+    state.filters[c.dataset.g] = c.dataset.v; save(); renderTable();
+  });
+}
+const COLS = [
+  {k:"", ja:"", en:"", w:"34px"},
+  {k:"name", ja:"タスク", en:"Task", sort:true},
+  {k:"freq", ja:"頻度・時刻", en:"Cadence", sort:true},
+  {k:"", ja:"cron", en:"cron"},
+  {k:"tier", ja:"Tier", en:"Tier", sort:true},
+  {k:"runner", ja:"実行先", en:"Runner", sort:true},
+  {k:"", ja:"ゲート", en:"Gates"},
+  {k:"", ja:"確度", en:"Confidence"}
+];
+const LIVE_COLS = [{ja:"状態",en:"State"},{ja:"前回実行",en:"Last run"},{ja:"次回",en:"Next run"}];
+function liveRowFor(t){ return (live.tasks || []).find(x => x.name === t.ja) || null; }
+function fmtStamp(iso){
+  if(!iso) return "—";
+  const d = new Date(iso);
+  if(!Number.isFinite(d.getTime())) return "—";
+  return `${pad(d.getMonth()+1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function stateBadge(st){
+  if(!st) return `<span style="color:var(--ink3)">—</span>`;
+  const cls = st==="error" ? "crit" : st==="running" ? "info" : st==="disabled" ? "warn" : "ok";
+  return `<span class="badge ${cls}">${st}</span>`;
+}
+function renderTable(){
+  renderFilters();
+  const showLive = !!(live.ok && live.tasks);
+  $("#thead").innerHTML = COLS.map(c =>
+    `<th ${c.sort?`class="sortable" data-k="${c.k}"`:""} ${c.w?`style="width:${c.w}"`:""}>${c[currentLang]}${c.sort&&state.sort.key===c.k?(state.sort.dir>0?" ▲":" ▼"):""}</th>`).join("")
+    + (showLive ? LIVE_COLS.map(c => `<th>${c[currentLang]}</th>`).join("") : "");
+  $("#thead").querySelectorAll("th.sortable").forEach(th => th.onclick = () => {
+    if(state.sort.key===th.dataset.k) state.sort.dir *= -1; else { state.sort.key = th.dataset.k; state.sort.dir = 1; }
+    save(); renderTable();
+  });
+  const rows = filtered();
+  $("#countChip").textContent = currentLang==="en" ? `${rows.length} / ${TASKS.length} shown` : `${rows.length} / ${TASKS.length} 件`;
+  $("#tbody").innerHTML = rows.map(t => `
+    <tr data-id="${t.id}" class="${selected===t.id?"rowsel":""}">
+      <td><input type="checkbox" data-en="${t.id}" ${t.enabled?"checked":""} aria-label="enable"></td>
+      <td class="name"><b>${esc(currentLang==="en"?t.en:t.ja)}</b>
+        <span class="meta">${esc(currentLang==="en"?t.projEn:t.projJa)}${t.desktop?" · <span style='color:var(--crit)'>Claude Desktop</span>":""}</span></td>
+      <td>${whenStr(t)}${t.off?` <span class="badge">+${t.off}m</span>`:""}</td>
+      <td class="mono" style="font-size:11.5px;white-space:nowrap">${cronOf(t)}</td>
+      <td><select class="cellsel" data-tier="${t.id}">${Object.keys(TIERS).map(k=>`<option value="${k}" ${t.tier===k?"selected":""}>${k}</option>`).join("")}</select></td>
+      <td><select class="cellsel" data-runner="${t.id}">${Object.keys(RUNNERS).map(k=>`<option value="${k}" ${t.runner===k?"selected":""}>${RUNNERS[k][currentLang]}</option>`).join("")}</select></td>
+      <td>${t.gates.length ? t.gates.map(g=>`<span class="badge ${g==="web"?"":"crit"}">${GATES[g][currentLang]}</span>`).join(" ") : `<span style="color:var(--ink3)">—</span>`}</td>
+      <td>${t.conf?`<span class="badge ok">${currentLang==="en"?"measured":"実測"}</span>`:`<span class="badge warn">${currentLang==="en"?"proposed":"提案"}</span>`}</td>
+      ${showLive ? (r => `<td>${stateBadge(r && r.state)}</td>
+        <td class="mono" style="font-size:11.5px">${fmtStamp(r && r.last_run)}</td>
+        <td class="mono" style="font-size:11.5px">${fmtStamp(r && r.next_run)}</td>`)(liveRowFor(t)) : ""}
+    </tr>`).join("");
+  const tb = $("#tbody");
+  tb.querySelectorAll("tr").forEach(tr => tr.onclick = e => {
+    if(e.target.closest("select,input")) return;
+    selected = tr.dataset.id; renderDrawer(); renderTable();
+  });
+  tb.querySelectorAll("select[data-tier]").forEach(s => s.onchange = () => setOv(s.dataset.tier, {tier:s.value, runner:defaultRunner(s.value)}));
+  tb.querySelectorAll("select[data-runner]").forEach(s => s.onchange = () => setOv(s.dataset.runner, {runner:s.value}));
+  tb.querySelectorAll("input[data-en]").forEach(c => c.onchange = () => setOv(c.dataset.en, {enabled:c.checked}));
+}
+function setOv(id, patch){
+  state.ov[id] = Object.assign({}, state.ov[id]||{}, patch);
+  save(); renderAll();
+}
+function renderDrawer(){
+  const d = $("#drawer");
+  if(!selected){ d.hidden = true; return; }
+  const t = T(TASKS.find(x => x.id===selected));
+  const tier = TIERS[t.tier];
+  d.hidden = false;
+  d.innerHTML = `
+    <header>
+      <div style="flex:1">
+        <h2 style="font-size:15px">${esc(currentLang==="en"?t.en:t.ja)}</h2>
+        <div style="font-size:11.5px;color:var(--ink3)">${esc(currentLang==="en"?t.projEn:t.projJa)}</div>
+      </div>
+      <button class="closex" id="drawerX" aria-label="close">×</button>
+    </header>
+    <div class="body">
+      <p style="margin:0;font-size:13px">${esc(currentLang==="en"?t.dEn:t.dJa)}</p>
+      <dl class="dl">
+        <dt>${currentLang==="en"?"Cadence":"頻度"}</dt><dd>${whenStr(t)} ${t.conf?"":`<span class="badge warn">${currentLang==="en"?"proposed":"提案"}</span>`}</dd>
+        <dt>cron</dt><dd class="mono">${cronOf(t)}</dd>
+        <dt>Tier</dt><dd><span class="badge tier ${tier.cls}">${t.tier}</span> ${tier[currentLang]}</dd>
+        <dt>${currentLang==="en"?"Runner":"実行先"}</dt><dd>${RUNNERS[t.runner][currentLang]}</dd>
+        <dt>${currentLang==="en"?"Wave":"ウェーブ"}</dt><dd>${WAVES[t.wave][currentLang]} <span style="color:var(--ink3);font-size:11px">${currentLang==="en"?WAVES[t.wave].codeEn:WAVES[t.wave].codeJa}</span></dd>
+        <dt>${currentLang==="en"?"Runtime":"実行時間"}</dt><dd class="mono">${runMin(t)} min ${runMeasured(t)?`<span class="badge ok">${currentLang==="en"?"measured":"実測"}</span>`:`<span class="badge warn">${currentLang==="en"?"assumed":"仮定"}</span>`}</dd>
+        <dt>${currentLang==="en"?"Depends on":"依存"}</dt><dd>${t.deps.length ? t.deps.map(id => esc(currentLang==="en"?TASKS.find(z=>z.id===id).en:TASKS.find(z=>z.id===id).ja)).join("、") : "—"}</dd>
+        <dt>${currentLang==="en"?"Gates":"ゲート"}</dt><dd>${t.gates.length ? t.gates.map(g=>GATES[g][currentLang]).join("、") : "—"}</dd>
+      </dl>
+      <div>
+        <div style="font-size:11.5px;color:var(--ink3);margin-bottom:4px">${currentLang==="en"?"Migration verdict":"移行判定"}</div>
+        <div class="note ${t.tier==="L4"?"crit":t.tier==="L3"?"":"info"}">${verdictText(t)}</div>
+      </div>
+      <div>
+        <div style="font-size:11.5px;color:var(--ink3);margin-bottom:4px">${currentLang==="en"?"agent-zero prompt skeleton":"agent-zero 用プロンプト雛形"}</div>
+        <pre class="out" style="max-height:200px">${esc(promptFor(t))}</pre>
+      </div>
+      ${live.ok ? `<button class="btn" id="runNow">${currentLang==="en"?"Run this task on agent-zero":"agent-zero でこのタスクを実行"}</button>
+        <div style="font-size:11px;color:var(--ink3)">${currentLang==="en"?"Runs only if a task with the same name already exists on agent-zero. Asks for confirmation first (USER GATE)."
+        :"agent-zero 側に同名タスクが存在する場合のみ実行。実行前に確認ダイアログを出す（USER GATE）。"}</div>` : ""}
+    </div>`;
+  $("#drawerX").onclick = () => { selected = null; renderDrawer(); renderTable(); };
+  const rb = $("#runNow"); if(rb) rb.onclick = () => runRemote(t);
+}
+function verdictText(t){
+  const en = currentLang==="en";
+  if(t.tier==="L4") return en
+    ? "Blocked on the desktop dependency. Rebuild the MCP/browser step as an agent-zero browser job, then re-tier. Until then this task dies whenever the Windows box is off."
+    : "Desktop 依存が残るため移行不可。MCP／ブラウザ操作を agent-zero のブラウザジョブに置き換えてから再判定。現状は Windows 機が落ちた時点で停止する。";
+  if(t.tier==="L3") return en
+    ? "Move the schedule and the plumbing to agent-zero, keep the reasoning step on the metered Console API. Cuts the desktop dependency, keeps token cost."
+    : "スケジュールと配線は agent-zero に移し、推論部分のみ Console API 従量で残す。Desktop 依存は切れるがトークン費は残る。";
+  if(t.tier==="L2") return en
+    ? "Portable now: agent-zero scheduler plus a fetch step. Check each source's terms before enabling unattended."
+    : "そのまま移行可能。agent-zero スケジューラ＋取得ステップで再現できる。無人化の前に取得先の規約を確認すること。";
+  return en ? "Fully local. Move it first — it is the cheapest proof that the exit works."
+            : "完全ローカル化可能。最初に移すべき行。離脱が成立することを最小コストで証明できる。";
+}
+function promptFor(t){
+  const en = currentLang==="en";
+  const hard = t.gates.filter(g => g!=="web");
+  const lines = en ? [
+    `# ${t.en}`, "",
+    "Role: MinoPRO integrated agent running locally on agent-zero.",
+    "Output: Japanese by default, conclusion first, high density, no preamble.",
+    "Facts: treat prior notes as hypotheses; verify against primary sources before reporting.",
+    "Unknowns: never fill gaps by guessing — mark them unverified and say how to check.", "",
+    "Task:", `- ${t.dEn}`,
+    `- Cadence: ${whenStr(t)} (cron ${cronOf(t)}, Asia/Tokyo)`,
+    hard.length ? `- USER GATE: stop at a proposal — never act — for: ${hard.map(g=>GATES[g].en).join(", ")}` : "- USER GATE: none",
+    t.gates.includes("web") ? "- Fetching: respect robots.txt, rate limits and each source's terms." : null,
+    t.deps.length ? `- Read the output of: ${t.deps.join(", ")}` : "- No upstream dependency", "",
+    "Deliverable: append the result to the project STATE ledger and report the diff only."
+  ] : [
+    `# ${t.ja}`, "",
+    "役割: agent-zero 上でローカル実行される MinoPRO 統合エージェント。",
+    "出力: 日本語既定・結論先出し・高密度・前置き省略。",
+    "事実主義: 過去メモや外部出力は仮説として扱い、一次ソースで照合してから報告する。",
+    "不確実点: 推測で埋めず「未確認」と明示し、確認方法を添える。", "",
+    "タスク:", `- ${t.dJa}`,
+    `- 実行頻度: ${whenStr(t)}（cron ${cronOf(t)} / Asia/Tokyo）`,
+    hard.length ? `- USER GATE: ${hard.map(g=>GATES[g].ja).join("・")} は提示までで停止し、実行しない。` : "- USER GATE: 該当なし",
+    t.gates.includes("web") ? "- 外部取得: robots.txt・レート制限・取得先規約を順守する。" : null,
+    t.deps.length ? `- 前段の出力を参照: ${t.deps.join(", ")}` : "- 前段依存なし", "",
+    "成果物: プロジェクトの STATE 台帳へ追記し、差分のみ報告する。"
+  ];
+  return lines.filter(l => l !== null).join("\n");
+}
+
+/* ---------- 9. RENDER: ORCHESTRATION ---------- */
+function renderWaves(){
+  const box = $("#waves"); box.innerHTML = "";
+  ["W0","W1","W2","W3"].forEach(w => {
+    const list = all().filter(t => t.wave===w).sort((a,b) => minOfDay(a)-minOfDay(b));
+    const lane = el("div","lane");
+    lane.appendChild(el("div","lname",
+      `${WAVES[w][currentLang]}<small>${w} · ${currentLang==="en"?WAVES[w].codeEn:WAVES[w].codeJa} · ${list.length}</small>`));
+    const chips = el("div");
+    list.forEach(t => {
+      const c = el("button", `taskchip ${t.tier==="L4"?"l4":""} ${t.enabled?"":"off"}`,
+        `<span>${esc(clip(currentLang==="en"?t.en:t.ja, 24))}</span><span class="t">${timeStr(t)}</span>`);
+      c.onclick = () => { selected = t.id; state.tab = "registry"; save(); showTab(); renderTable(); renderDrawer(); };
+      chips.appendChild(c);
+    });
+    lane.appendChild(chips); box.appendChild(lane);
+  });
+}
+function renderDag(){
+  const cols = ["W0","W1","W2","W3"];
+  const nodes = {}, colW = 232, boxW = 196, boxH = 26, gap = 8, top = 34;
+  cols.forEach((w,ci) => {
+    all().filter(t => t.wave===w).sort((a,b)=>minOfDay(a)-minOfDay(b)).forEach((t,ri) => {
+      nodes[t.id] = {t, x: 8 + ci*colW, y: top + ri*(boxH+gap), ci};
+    });
+  });
+  const maxRows = Math.max(...cols.map(w => all().filter(t=>t.wave===w).length));
+  const W = 8 + cols.length*colW, H = top + maxRows*(boxH+gap) + 16;
+  let edges = "", boxes = "";
+  all().forEach(t => t.deps.forEach(d => {
+    const a = nodes[d], b = nodes[t.id]; if(!a || !b) return;
+    const x1 = a.x + boxW, y1 = a.y + boxH/2, x2 = b.x, y2 = b.y + boxH/2;
+    const mid = x1 + (x2-x1)/2;
+    edges += `<path d="M${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}" fill="none" stroke="var(--line2)" stroke-width="1.1" marker-end="url(#ar)"/>`;
+  }));
+  Object.values(nodes).forEach(n => {
+    const t = n.t, c = WAVE_COLOR[t.wave];
+    const fill = t.enabled ? "var(--panel2)" : "var(--sunk)";
+    boxes += `<g opacity="${t.enabled?1:.5}">
+      <rect x="${n.x}" y="${n.y}" width="${boxW}" height="${boxH}" rx="5" fill="${fill}" stroke="${t.tier==="L4"?"var(--crit)":"var(--line)"}" stroke-width="${t.tier==="L4"?1.6:1}"/>
+      <rect x="${n.x}" y="${n.y}" width="3.5" height="${boxH}" rx="2" fill="${c}"/>
+      <text x="${n.x+11}" y="${n.y+17}" font-size="11" fill="var(--ink)">${esc(clip(currentLang==="en"?t.en:t.ja, currentLang==="en"?24:13))}</text>
+      <text x="${n.x+boxW-8}" y="${n.y+17}" font-size="9.5" font-family="var(--mono)" fill="var(--ink3)" text-anchor="end">${timeStr(t)}</text>
+    </g>`;
+  });
+  const heads = cols.map((w,ci) => `<text x="${8+ci*colW}" y="20" font-size="11" font-family="var(--mono)" fill="var(--ink3)">${w} ${WAVES[w][currentLang]}</text>`).join("");
+  $("#dag").innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%" role="img" aria-label="dependency graph">
+    <defs><marker id="ar" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="var(--line2)"/></marker></defs>
+    ${heads}${edges}${boxes}</svg>`;
+}
+function renderCollide(){
+  const cols = collisions(), box = $("#collide");
+  const peak = peakConcurrency();
+  const en = currentLang==="en";
+  if(!cols.length){
+    box.innerHTML = `<div class="note info"><b>${en?"No collision.":"衝突なし。"}</b> ${en
+      ? `Peak concurrency is ${peak} against a limit of ${state.conc}.`
+      : `週内のピーク同時実行は ${peak} 本、上限 ${state.conc} 本以内に収まっている。`}</div>`;
+    return;
+  }
+  const seen = new Set(); const groups = [];
+  cols.forEach(c => {
+    const key = c.dow+"@"+c.at;
+    if(seen.has(key)) return; seen.add(key); groups.push(c);
+  });
+  const D = en ? DOW_EN : DOW_JA;
+  box.innerHTML = `<div class="note crit"><b>${groups.length} ${en?"collision windows":"件の衝突"}</b> — ${en
+    ? `peak concurrency ${peak} exceeds the limit of ${state.conc}. Rate limits and duplicate fetches start here.`
+    : `ピーク同時実行 ${peak} 本が上限 ${state.conc} 本を超過。レート制限と二重取得はここから起きる。`}</div>
+    <div class="tablewrap" style="margin-top:10px"><table><thead><tr>
+      <th>${en?"Day":"曜日"}</th><th>${en?"Window":"時刻"}</th><th>${en?"Overlapping tasks":"重なるタスク"}</th></tr></thead><tbody>${
+    groups.map(g => `<tr><td>${D[g.dow]}</td><td class="mono">${pad(Math.floor(g.at/60))}:${pad(g.at%60)}</td>
+      <td>${g.items.map(t => `<span class="badge">${esc(clip(en?t.en:t.ja, 20))}</span>`).join(" ")}</td></tr>`).join("")
+  }</tbody></table></div>
+  <div style="font-size:11.5px;color:var(--ink3);margin-top:8px">${en
+    ? "Runtime comes from each Routine's own last run (fired_at → finished_at) where one was recorded; the rest fall back to the class assumption and say so."
+    : "実行時間は各 Routine の直近実行（fired_at→finished_at）の実測値。記録が無い行だけクラス仮定にフォールバックし、その旨を表示する。"}</div>`;
+}
+
+/* ---------- 10. RENDER: MIGRATION ---------- */
+const PHASES = [
+  {id:"p0", ja:["棚卸しと凍結","claude.ai 側の19本をこの台帳と突き合わせ、時刻未確認9本の実値を確認して確定させる。新規タスクの追加はここで一旦止める。"],
+           en:["Inventory and freeze","Reconcile the 19 claude.ai tasks against this ledger and confirm the 9 unverified fire times. Stop adding new tasks while you do it."]},
+  {id:"p1", ja:["agent-zero に並走投入","L1／L2 の11本を tasks.json で agent-zero に投入し、claude.ai 側と1〜2週間並走させる。出力を毎日突き合わせる。"],
+           en:["Run in parallel on agent-zero","Load the 11 L1/L2 tasks into agent-zero via tasks.json and run both sides for one or two weeks, diffing the output daily."]},
+  {id:"p2", ja:["L3 の推論だけ残す","Deep Research 級5本は、スケジュールと取得を agent-zero に移し、推論のみ Console API 従量に切り出す。"],
+           en:["Keep only L3 reasoning remote","For the 5 Deep-Research jobs, move schedule and fetch to agent-zero and call the metered Console API for the reasoning step only."]},
+  {id:"p3", ja:["Desktop 依存を解体","L4 の3本は MCP／GUI 操作をブラウザジョブに置換。置換できない操作は人手手順として文書化し、無人実行から外す。"],
+           en:["Dismantle the desktop dependency","Rebuild the 3 L4 jobs' MCP/GUI steps as browser jobs. Anything that cannot be rebuilt becomes a documented manual step, out of the unattended set."]},
+  {id:"p4", ja:["claude.ai 側を停止","並走で差分ゼロを2週間確認できた行から claude.ai のタスクを無効化（削除ではなく無効化）。台帳の実行先を更新する。"],
+           en:["Switch claude.ai off","Disable — not delete — each claude.ai task once two weeks of parallel running show no diff, then update the runner column here."]},
+  {id:"p5", ja:["自律拡張","衝突解消・失敗再実行・週次自己監査を agent-zero 側のジョブとして常設し、この台帳自体を出力物に含める。"],
+           en:["Autonomous extension","Make collision resolution, failure retry and the weekly self-audit standing agent-zero jobs, and let them publish this ledger as an output."]}
+];
+function renderPhases(){
+  $("#phases").innerHTML = PHASES.map((p,i) => {
+    const txt = currentLang==="en" ? p.en : p.ja;
+    return `<div class="phase">
+      <div class="pn">PHASE ${i}</div>
+      <div><label class="check" style="border:none;padding:0">
+        <input type="checkbox" data-phase="${p.id}" ${state.phases[p.id]?"checked":""}>
+        <div><h3>${txt[0]}</h3><p>${txt[1]}</p></div></label></div></div>`;
+  }).join("");
+  $("#phases").querySelectorAll("input[data-phase]").forEach(c => c.onchange = () => {
+    state.phases[c.dataset.phase] = c.checked; save();
+  });
+}
+function renderVerdicts(){
+  $("#verdicts").innerHTML = Object.keys(TIERS).map(k => {
+    const list = all().filter(t => t.tier===k);
+    const T0 = TIERS[k];
+    return `<div class="panel" style="border-left:3px solid var(--${T0.cls==="ok"?"ok":T0.cls==="info"?"info":T0.cls==="warn"?"warn":"crit"})">
+      <div class="row" style="justify-content:space-between"><b>${T0[currentLang]}</b><span class="mono" style="font-size:18px">${list.length}</span></div>
+      <p style="margin:6px 0 8px;font-size:12px;color:var(--ink2)">${currentLang==="en"?T0.descEn:T0.descJa}</p>
+      <div>${list.map(t => `<span class="badge">${esc(clip(currentLang==="en"?t.en:t.ja, 16))}</span>`).join(" ")}</div></div>`;
+  }).join("");
+}
+/* ---------- 11. EXPORTS ---------- */
+const EXPORTS = [
+  {k:"tasks", ja:"agent-zero tasks.json", en:"agent-zero tasks.json",
+   hintJa:"tmp/scheduler/tasks.json をこの内容で置き換える（要バックアップ）", hintEn:"replace tmp/scheduler/tasks.json with this (back it up first)"},
+  {k:"cron", ja:"cron 対応表", en:"cron reference",
+   hintJa:"OS cron を併用する場合の参考。agent-zero 内蔵スケジューラのみなら不要", hintEn:"reference for OS cron; not needed if you use the built-in scheduler"},
+  {k:"py", ja:"移行スクリプト (Python)", en:"migration script (Python)",
+   hintJa:"API 経由で1本ずつ作成。認証情報は環境変数から読む", hintEn:"creates tasks one by one via the API; credentials come from env vars"},
+  {k:"n8n", ja:"n8n ワークフロー", en:"n8n workflows",
+   hintJa:"Schedule Trigger + Ollama 呼び出し。取り込み後は全て停止状態、1本試してから有効化", hintEn:"Schedule Trigger plus an Ollama call; everything imports inactive — try one before activating"},
+  {k:"md", ja:"中核MD（MNRKW-STATE.md）", en:"core ledger (MNRKW-STATE.md)",
+   hintJa:"リポジトリ直下の MNRKW-STATE.md ただ1枚。人もAIもこれだけを読む。他のMDは作らない", hintEn:"MNRKW-STATE.md at the repository root — the only sheet. Nothing else is created."},
+  {k:"snap", ja:"台帳スナップショット", en:"ledger snapshot",
+   hintJa:"この台帳の状態。監査証跡・再取り込み用", hintEn:"state of this ledger, for audit trail and re-import"}
+];
+function buildExport(kind){
+  const rows = activeTasks();
+  if(kind==="tasks"){
+    const now = new Date().toISOString();
+    return JSON.stringify({tasks: rows.filter(t => t.runner!=="claude").map(t => ({
+      uuid: uuidOf(t.id), name: t.ja, state: "idle",
+      system_prompt: "あなたは MinoPRO 統合エージェント（ローカル実行）です。日本語既定・結論先出し・高密度で応答し、不確実な点は未確認と明示します。",
+      prompt: promptFor(t), attachments: [],
+      created_at: now, updated_at: now, last_run: null, last_result: null,
+      context_id: null, type: "scheduled", schedule: schedOf(t)
+    }))}, null, 2);
+  }
+  if(kind==="md"){
+    const on = activeTasks(), col = collisions(), peak = peakConcurrency();
+    const L = [];
+    L.push("<!-- MNRKW-STATE — 唯一の中核MD。派生MDを作らないこと。 -->");
+    L.push("<!-- 機械が書く区画: LEDGER / SWEEP / LOG。人が書くのは「決定」節のみ。 -->");
+    L.push("# MNRKW-STATE");
+    L.push("");
+    L.push("**このファイルだけを参照する。** 司令塔（`webui/orchestrator.html`）が台帳区画を、PowerShell 巡回が環境区画と履歴を上書きする。手書きは「決定」節だけ。");
+    L.push("");
+    L.push("| 参照順 | 内容 | 書き手 |");
+    L.push("|---|---|---|");
+    L.push("| 1 | 台帳（LEDGER） | 司令塔が再生成 |");
+    L.push("| 2 | 環境実測（SWEEP） | PowerShell 巡回が上書き |");
+    L.push("| 3 | 履歴（LOG） | 巡回が追記のみ |");
+    L.push("| 4 | 決定 | 人が書く |");
+    L.push("");
+    L.push("<!-- LEDGER:BEGIN -->");
+    L.push("");
+    L.push("## 1. 現況");
+    L.push("");
+    L.push("| 項目 | 値 |");
+    L.push("|---|---|");
+    L.push("| 台帳生成 | " + new Date().toISOString() + " |");
+    L.push("| 登録タスク | " + TASKS.length + " 本（有効 " + on.length + "） |");
+    L.push("| 時刻 実測 / 未確認 | " + TASKS.filter(t=>t.conf).length + " / " + TASKS.filter(t=>!t.conf).length + " 本 |");
+    L.push("| 出典 | claude.ai Routines API（list_triggers）の cron_expression を JST 換算 |");
+    L.push("| 実行時間 実測 / 仮定 | " + TASKS.filter(runMeasured).length + " / " + TASKS.filter(t=>!runMeasured(t)).length + " 本 |");
+    L.push("| Desktop 依存（単一障害点） | " + on.filter(t=>t.tier==="L4").length + " 本 |");
+    L.push("| ローカル実行 | " + on.filter(t=>t.runner==="agentzero").length + " / " + on.length + " 本 |");
+    L.push("| 同時実行ピーク / 上限 | " + peak + " / " + state.conc + " 本 |");
+    L.push("| 時刻衝突 | " + col.length + " 件 |");
+    L.push("");
+    L.push("## 2. タスク台帳");
+    L.push("");
+    L.push("| # | タスク | 頻度 | cron | 時刻確度 | Tier | 実行先 | ウェーブ | 想定分 | ゲート | 依存 |");
+    L.push("|---|---|---|---|---|---|---|---|---|---|---|");
+    all().forEach((t,i) => L.push("| " + (i+1) + " | " + t.ja + " | " + whenStr(t) + " | `" + cronOf(t) + "` | " +
+      (t.conf ? "実測" : "**未確認/提案**") + " | " + t.tier + " | " + RUNNERS[t.runner].ja + " | " + t.wave + " | " +
+      runMin(t) + (runMeasured(t) ? "" : "(仮)") + " | " + (t.gates.map(g=>GATES[g].ja).join("・") || "—") + " | " + (t.deps.join(", ") || "—") + " |"));
+    L.push("");
+    L.push("## 3. 未確認（埋めるまで自動実行しない）");
+    L.push("");
+    all().filter(t=>!t.conf).forEach(t => L.push("- [ ] **" + t.ja + "** — claude.ai 上の実際の起動時刻（現在の提案値: " + whenStr(t) + "）"));
+    L.push("- [ ] ウェーブ割付と依存エッジは名称・プロンプトからの推定。実運用で確認する");
+    all().filter(t=>!runMeasured(t)).forEach(t => L.push("- [ ] **" + t.ja + "** — 実行時間の実測が無い（未実行、または常駐セッションへの配信待ちを含む異常値のため不採用）"));
+    L.push("- [ ] Ollama のモデル名（巡回結果から選び、n8n 出力の PUT-YOUR-OLLAMA-MODEL-HERE を置換）");
+    L.push("");
+    L.push("## 4. USER GATE（自動実行を許さない操作）");
+    L.push("");
+    L.push("| タスク | 停止対象 |");
+    L.push("|---|---|");
+    all().filter(t=>t.gates.filter(g=>g!=="web").length).forEach(t =>
+      L.push("| " + t.ja + " | " + t.gates.filter(g=>g!=="web").map(g=>GATES[g].ja).join("・") + " |"));
+    L.push("");
+    L.push("## 5. 出典（コード実測）");
+    L.push("");
+    L.push("- 静的配信 `run_ui.py:28` / タスク永続化 `python/helpers/task_scheduler.py:444-462`");
+    L.push("- スケジュール形 `task_scheduler.py:48-57, 930-940` / ポート解決 `python/helpers/runtime.py:132`");
+    L.push("- 文字コード `python/helpers/files.py:85-95`（utf-8 固定・BOM を剥がさない）");
+    L.push("- tick のループバック限定 `run_ui.py:95-106`, `python/api/scheduler_tick.py`");
+    L.push("- n8n Schedule Trigger 形: n8n 本体 `packages/nodes-base/nodes/Schedule/ScheduleTrigger.node.ts`（type `n8n-nodes-base.scheduleTrigger` / `rule.interval[].field=\"cronExpression\"`）");
+    L.push("");
+    L.push("<!-- LEDGER:END -->");
+    L.push("");
+    L.push("## 6. 環境実測");
+    L.push("");
+    L.push("<!-- SWEEP:BEGIN -->");
+    L.push("未巡回。07タブの巡回ブロックを1回実行すること。");
+    L.push("<!-- SWEEP:END -->");
+    L.push("");
+    L.push("## 7. 履歴（追記のみ）");
+    L.push("");
+    L.push("<!-- LOG:BEGIN -->");
+    L.push("<!-- LOG:END -->");
+    L.push("");
+    L.push("## 8. 決定（人が書く）");
+    L.push("");
+    L.push("- 2026-09-16 Docker 不使用。基盤は Odoo + n8n + PostgreSQL + Python + Ollama + Qwen。");
+    L.push("- 2026-09-16 参照MDは本ファイル1枚のみ。派生MDを作らない。");
+    L.push("- 2026-09-16 claude.ai 側の停止・時刻変更は Routines API 経由で Claude が実行できる（USER GATE：本人の明示指示が要る。削除は行わない）。");
+    L.push("");
+    return L.join("\n");
+  }
+  if(kind==="n8n"){
+    // Shape verified against n8n source: node type "n8n-nodes-base.scheduleTrigger",
+    // versions [1, 1.1, 1.2, 1.3, 1.4], parameters.rule.interval[].field="cronExpression"
+    // with the cron string in .expression.
+    const wf = rows.map((t, i) => {
+      const local = t.tier==="L1" || t.tier==="L2";
+      const second = local ? {
+        parameters:{ method:"POST", url:"http://127.0.0.1:11434/api/generate",
+          sendBody:true, specifyBody:"json",
+          jsonBody: JSON.stringify({model:"PUT-YOUR-OLLAMA-MODEL-HERE", prompt: promptFor(t), stream:false}, null, 1),
+          options:{} },
+        id: uuidOf(t.id+":run"), name:"Ollama", type:"n8n-nodes-base.httpRequest",
+        typeVersion:4.2, position:[260, 0]
+      } : {
+        parameters:{}, id: uuidOf(t.id+":run"),
+        name: t.tier==="L4" ? "要Desktop代替 — ここに処理を接続" : "要クラウド推論 — ここに処理を接続",
+        type:"n8n-nodes-base.noOp", typeVersion:1, position:[260, 0]
+      };
+      return {
+        name: "MinoPRO " + String(i+1).padStart(2,"0") + " " + t.ja,
+        nodes: [{
+          parameters:{ rule:{ interval:[{ field:"cronExpression", expression: cronOf(t) }] } },
+          id: uuidOf(t.id+":cron"), name:"Schedule", type:"n8n-nodes-base.scheduleTrigger",
+          typeVersion:1.2, position:[0, 0]
+        }, second],
+        connections: { "Schedule": { main: [[{ node: second.name, type:"main", index:0 }]] } },
+        settings: { timezone:"Asia/Tokyo", executionOrder:"v1" },
+        active: false,
+        tags: [{name:"MinoPRO"}, {name:t.tier}, {name: t.conf ? "time-measured" : "time-proposed"}]
+      };
+    });
+    return JSON.stringify(wf, null, 2);
+  }
+  if(kind==="cron"){
+    const head = ["# MinoPRO orchestration — cron reference (Asia/Tokyo)",
+      "# Generated by the orchestration deck. agent-zero's built-in scheduler already",
+      "# reads these fields from tmp/scheduler/tasks.json; use this only for OS-level cron.",
+      "#", "# m h dom mon dow   task", "#"];
+    return head.concat(rows.map(t =>
+      `${cronOf(t).padEnd(16)} # ${t.ja}  [${t.tier}/${t.runner}]${t.conf?"":"  (time unverified — proposal)"}`)).join("\n");
+  }
+  if(kind==="py"){
+    const payload = rows.filter(t => t.runner!=="claude").map(t => ({name:t.ja, schedule:schedOf(t), prompt:promptFor(t)}));
+    return `#!/usr/bin/env python3
+"""Load MinoPRO scheduled tasks into a running agent-zero instance.
+
+Reads credentials from the environment — nothing is hard-coded:
+    export A0_BASE=http://127.0.0.1:<port>     # port is environment specific, check it
+    export A0_USER=...  A0_PASS=...
+Dry run first:  python3 migrate_tasks.py --dry-run
+"""
+import os, sys, json, requests
+
+BASE = os.environ.get("A0_BASE", "").rstrip("/")
+USER = os.environ.get("A0_USER", "")
+PASS = os.environ.get("A0_PASS", "")
+if not BASE:
+    sys.exit("set A0_BASE first")
+
+TASKS = ${JSON.stringify(payload, null, 2).split("\n").join("\n")}
+
+def main():
+    dry = "--dry-run" in sys.argv
+    s = requests.Session()
+    if USER:
+        s.auth = (USER, PASS)
+    token = s.get(f"{BASE}/csrf_token", timeout=20).json()["token"]
+    existing = s.post(f"{BASE}/scheduler_tasks_list", json={"timezone": "Asia/Tokyo"},
+                      headers={"X-CSRF-Token": token}, timeout=60).json()
+    have = {t["name"] for t in existing.get("tasks", [])}
+    for t in TASKS:
+        if t["name"] in have:
+            print("skip (exists):", t["name"]); continue
+        if dry:
+            print("would create:", t["name"], t["schedule"]); continue
+        r = s.post(f"{BASE}/scheduler_task_create",
+                   json={"name": t["name"], "system_prompt": "", "prompt": t["prompt"],
+                         "attachments": [], "schedule": t["schedule"], "timezone": "Asia/Tokyo"},
+                   headers={"X-CSRF-Token": token}, timeout=60)
+        print(r.status_code, t["name"])
+
+if __name__ == "__main__":
+    main()
+`;
+  }
+  return JSON.stringify({
+    generated_at: new Date().toISOString(),
+    note: "MinoPRO orchestration ledger snapshot. conf=false means the fire time was not verified against claude.ai.",
+    concurrency_limit: state.conc, stagger_step_min: state.step,
+    tasks: all().map(t => ({id:t.id, name:t.ja, name_en:t.en, freq:t.freq, cron:cronOf(t),
+      time_confirmed:t.conf, desktop_required:t.desktop, tier:t.tier, runner:t.runner,
+      wave:t.wave, weight:t.weight, offset_min:t.off, gates:t.gates, deps:t.deps, enabled:t.enabled}))
+  }, null, 2);
+}
+function renderExport(){
+  $("#exportPicker").innerHTML = EXPORTS.map(e =>
+    `<button class="chip" data-x="${e.k}" aria-pressed="${state.exportKind===e.k}">${e[currentLang]}</button>`).join("");
+  $("#exportPicker").querySelectorAll(".chip").forEach(c => c.onclick = () => {
+    state.exportKind = c.dataset.x; save();
+    const po = $("#preflightOut"); if(po) po.innerHTML = "";
+    renderExport();
+  });
+  const cur = EXPORTS.find(e => e.k===state.exportKind) || EXPORTS[0];
+  $("#exportHint").textContent = currentLang==="en" ? cur.hintEn : cur.hintJa;
+  $("#exportOut").textContent = buildExport(state.exportKind);
+}
+
+/* ---------- 12. RENDER: SAFETY ---------- */
+const GATE_ORDER = ["web","send","pay","del","cred","sys","pii","human"];
+function renderGates(){
+  const en = currentLang==="en";
+  $("#gthead").innerHTML = `<th>${en?"Task":"タスク"}</th>` +
+    GATE_ORDER.map(g => `<th style="text-align:center">${GATES[g][currentLang]}</th>`).join("") +
+    `<th>${en?"Unattended":"無人実行"}</th>`;
+  $("#gtbody").innerHTML = all().map(t => {
+    const hard = t.gates.filter(g => g!=="web").length > 0;
+    return `<tr><td class="name"><b>${esc(en?t.en:t.ja)}</b><span class="meta">${t.tier} · ${RUNNERS[t.runner][currentLang]}</span></td>` +
+      GATE_ORDER.map(g => `<td><span class="gmark ${t.gates.includes(g)?"on":"off"}">${t.gates.includes(g)?"●":"·"}</span></td>`).join("") +
+      `<td>${hard ? `<span class="badge crit">${en?"propose only":"提示までで停止"}</span>`
+                  : `<span class="badge ok">${en?"allowed":"可"}</span>`}</td></tr>`;
+  }).join("");
+}
+const DOCTRINE = [
+  {ja:["実行前の順序を固定する","過去確認 → read-only 検証 → 影響予測 → 段階実行 → 検証 → 記録。「全権委任」「急ぎ」と言われた時ほどこの順序を崩さない。"],
+   en:["Fix the order of operations","Check history → read-only verification → predict impact → staged execution → verify → record. The more the request sounds like 'just do it', the more this order holds."]},
+  {ja:["失敗は握りつぶさない","ジョブ失敗はリトライ1回まで。2回目の失敗は台帳に赤で残し、人へ通知する。自動で無効化しない。"],
+   en:["Never swallow a failure","One retry per job. A second failure lands red in the ledger and pings a human. Never auto-disable."]},
+  {ja:["キルスイッチを1か所に置く","全ジョブの停止は tmp/scheduler/tasks.json の state を disabled にする1操作に集約する。分散させない。"],
+   en:["Keep one kill switch","Stopping everything is one operation: flip state to disabled in tmp/scheduler/tasks.json. Do not scatter it."]},
+  {ja:["認証情報はコードに置かない","API キー・Basic 認証は環境変数のみ。本ダッシュボードと生成物には一切含めない（生成スクリプトも env 読み）。"],
+   en:["No credentials in code","API keys and basic-auth live in environment variables only — never in this dashboard or its output (the generated script reads env too)."]},
+  {ja:["個人情報を平文ログに残さない","巡回結果に含まれる個人情報はログ前にマスクする。APPI/GDPR/CCPA 準拠の最低線。"],
+   en:["No personal data in plaintext logs","Mask personal data before logging sweep results — the floor for APPI / GDPR / CCPA compliance."]},
+  {ja:["静的配信の前提を理解する","webui/ 配下は認証なしで配信される。本ファイルに秘密情報を書かない。公開ポートに晒さない。"],
+   en:["Know how this file is served","Everything under webui/ is served without auth. Keep secrets out of this file and off public ports."]},
+  {ja:["tick は認証なし・ループバック限定","/scheduler_tick は requires_auth=False・requires_loopback=True（run_ui.py:189, scheduler_tick.py）。127.0.0.1 以外からは 403。Docker で動かすとホストからの要求はブリッジのゲートウェイ経由になるため、この tick も 403 になる見込み（実機未確認）。内蔵スケジューラは自前で回るので実害はない。ポートを外部に晒すと保護はこの1行だけになる。"],
+   en:["The tick endpoint is unauthenticated and loopback-bound","/scheduler_tick sets requires_auth=False and requires_loopback=True (run_ui.py:189, scheduler_tick.py). Anything but 127.0.0.1 gets 403 — under Docker a request from the host arrives via the bridge gateway, so tick is expected to 403 there too (not verified on a real host). The built-in scheduler ticks on its own, so nothing is lost. If the port is exposed, that single check is the only thing protecting it."]}
+];
+function renderDoctrine(){
+  $("#doctrine").innerHTML = DOCTRINE.map(d => {
+    const x = currentLang==="en" ? d.en : d.ja;
+    return `<div style="padding:8px 0;border-bottom:1px solid var(--line)">
+      <b style="font-size:12.5px">${x[0]}</b>
+      <div style="font-size:12px;color:var(--ink2)">${x[1]}</div></div>`;
+  }).join("");
+}
+const CHECKS = [
+  {id:"c1", k:"TIME", ja:"時刻未確認の9本を claude.ai 側で実測し、台帳を更新した", en:"Measured the 9 unverified fire times on claude.ai and updated the ledger"},
+  {id:"c2", k:"DIFF", ja:"並走期間の出力差分をタスク別に2週間確認した", en:"Diffed output per task across two weeks of parallel running"},
+  {id:"c3", k:"AUTH", ja:"agent-zero の Basic 認証を設定し、外部ポートに晒していない", en:"Basic auth is configured on agent-zero and no port is exposed externally"},
+  {id:"c4", k:"BKUP", ja:"tmp/scheduler/tasks.json をバックアップしてから置き換えた", en:"Backed up tmp/scheduler/tasks.json before replacing it"},
+  {id:"c5", k:"GATE", ja:"ゲート対象タスクが無人実行で停止することを実機で確認した", en:"Verified on the real box that gated tasks stop instead of acting"},
+  {id:"c6", k:"FAIL", ja:"失敗通知が届くことを、意図的な失敗で1回確認した", en:"Triggered one deliberate failure and confirmed the alert arrives"},
+  {id:"c7", k:"KILL", ja:"キルスイッチで全ジョブが止まることを確認した", en:"Confirmed the kill switch stops every job"},
+  {id:"c8", k:"OFF",  ja:"claude.ai 側は削除ではなく無効化で止めた", en:"Stopped the claude.ai side by disabling, not deleting"}
+];
+function renderChecklist(){
+  $("#checklist").innerHTML = CHECKS.map(c =>
+    `<label class="check"><input type="checkbox" data-chk="${c.id}" ${state.checks[c.id]?"checked":""}>
+      <span class="k">${c.k}</span><span>${currentLang==="en"?c.en:c.ja}</span></label>`).join("");
+  $("#checklist").querySelectorAll("input[data-chk]").forEach(i => i.onchange = () => {
+    state.checks[i.dataset.chk] = i.checked; save(); renderChecklist();
+  });
+  const done = CHECKS.filter(c => state.checks[c.id]).length;
+  $("#checklist").insertAdjacentHTML("beforeend",
+    `<div style="margin-top:8px;font-family:var(--mono);font-size:11.5px;color:${done===CHECKS.length?"var(--ok)":"var(--ink3)"}">${done} / ${CHECKS.length}</div>`);
+}
+function renderLegal(){
+  const en = currentLang==="en";
+  $("#legal").innerHTML = en ? `
+    <ul class="tight">
+      <li><b>APPI / GDPR / CCPA:</b> sweep results may contain personal data. Mask before storage, keep retention bounded, and keep the store local (agent-zero memory) rather than a third-party service.</li>
+      <li><b>EU AI Act:</b> these are internal monitoring and summarisation jobs. If any output starts feeding decisions about people, re-assess the risk tier before automating further.</li>
+      <li><b>Source terms:</b> every L2/L3 job fetches third-party sites. Respect robots.txt, rate limits and each site's terms; a scheduled fetch is still a fetch you are responsible for.</li>
+      <li><b>Disclosure:</b> AI-generated deliverables carry the house watermark — WM-03 internal, WM-04 customer proposals, WM-05 public.</li>
+      <li><b>Outbound mail:</b> only the single published address is used for external sending; no scheduled job sends mail unattended.</li>
+    </ul>` : `
+    <ul class="tight">
+      <li><b>APPI / GDPR / CCPA:</b> 巡回結果に個人情報が混入しうる。保存前にマスクし、保持期間を区切り、第三者サービスではなくローカル（agent-zero メモリ）に置く。</li>
+      <li><b>EU AI Act:</b> 現状は社内監視・要約用途。出力が人に関する判断に使われ始めた時点で、自動化を進める前にリスク区分を再評価する。</li>
+      <li><b>取得先規約:</b> L2／L3 は第三者サイトを取得する。robots.txt・レート制限・各サイト規約を守る。スケジュール実行でも責任は取得者にある。</li>
+      <li><b>表示:</b> AI 生成物には社内規定の Watermark を付す（内部 WM-03／顧客提案 WM-04／公開 WM-05）。</li>
+      <li><b>外部送信:</b> 対外送信は公開用アドレス1本のみ。無人ジョブからのメール送信は行わない。</li>
+    </ul>`;
+}
+
+/* ---------- 13. RENDER: COST ---------- */
+function tokensPerRun(t){
+  const c = state.cost;
+  return t.weight==="light" ? +c.tl : t.weight==="heavy" ? +c.th : +c.tm;
+}
+function renderCost(){
+  const en = currentLang==="en";
+  const c = state.cost;
+  const rows = activeTasks();
+  const metered = rows.filter(t => t.runner!=="agentzero");
+  const tokMonth = rows.reduce((s,t) => s + tokensPerRun(t)*runsPerMonth(t), 0);
+  const tokMetered = metered.reduce((s,t) => s + tokensPerRun(t)*runsPerMonth(t), 0);
+  const pin = parseFloat(c.pin), pout = parseFloat(c.pout), fx = parseFloat(c.fx);
+  const priced = isFinite(pin) && isFinite(pout) && pin>=0 && pout>=0;
+  // assumption: 80% of tokens are input (fetched context), 20% output
+  const usd = priced ? (tokMetered*0.8/1e6*pin + tokMetered*0.2/1e6*pout) : null;
+  const usdAll = priced ? (tokMonth*0.8/1e6*pin + tokMonth*0.2/1e6*pout) : null;
+  const jpy = (usd!=null && isFinite(fx) && fx>0) ? usd*fx : null;
+  const money = (u) => u==null ? `<span class="val dim">${en?"enter unit price":"単価未入力"}</span>`
+    : `<span class="val">$${u.toFixed(2)}${(isFinite(fx)&&fx>0)?` / ¥${Math.round(u*fx).toLocaleString()}`:""}</span>`;
+  const figs = [
+    {lbl:{ja:"月間トークン（全タスク）",en:"Monthly tokens (all)"}, html:`<span class="val">${(tokMonth/1e6).toFixed(1)}M</span>`},
+    {lbl:{ja:"うち従量課金対象",en:"Metered portion"}, html:`<span class="val">${(tokMetered/1e6).toFixed(1)}M</span>`},
+    {lbl:{ja:"月額（従量分）",en:"Monthly cost (metered)"}, html:money(usd)},
+    {lbl:{ja:"全部クラウドに置いた場合",en:"If everything stayed cloud"}, html:money(usdAll)},
+    {lbl:{ja:"ローカル化による削減",en:"Saved by localizing"}, html: (usd!=null&&usdAll!=null) ? money(usdAll-usd) : money(null)}
+  ];
+  $("#costFigs").innerHTML = figs.map(f => `<div class="fig"><div class="lbl">${f.lbl[currentLang]}</div>${f.html}</div>`).join("")
+    + `<div class="fig" style="border-style:dashed"><div class="lbl">${en?"Assumptions":"前提"}</div>
+       <div style="font-size:11.5px;color:var(--ink2)">${en
+        ? "80/20 input-output split; local runs counted as zero variable cost (hardware and power are fixed cost). Token volumes are assumed, not measured."
+        : "入出力比 80:20。ローカル実行は変動費ゼロ扱い（機材・電力は固定費）。トークン量は仮定値であり実測ではない。"}</div></div>`;
+  $("#cthead").innerHTML = [en?"Task":"タスク", en?"Cadence":"頻度", en?"Runs/mo":"月間回数", en?"Tok/run":"tok/回",
+    en?"Tok/mo":"tok/月", en?"Runner":"実行先", en?"Metered":"課金"].map(h=>`<th>${h}</th>`).join("");
+  $("#ctbody").innerHTML = rows.slice().sort((a,b)=>tokensPerRun(b)*runsPerMonth(b)-tokensPerRun(a)*runsPerMonth(a)).map(t => {
+    const m = tokensPerRun(t)*runsPerMonth(t);
+    const met = t.runner!=="agentzero";
+    return `<tr><td class="name"><b>${esc(en?t.en:t.ja)}</b><span class="meta">${WEIGHTS[t.weight][currentLang]} · ${t.tier}</span></td>
+      <td>${whenStr(t)}</td><td class="mono">${runsPerMonth(t).toFixed(1)}</td>
+      <td class="mono">${(tokensPerRun(t)/1000).toFixed(0)}k</td>
+      <td class="mono">${(m/1e6).toFixed(2)}M</td>
+      <td>${RUNNERS[t.runner][currentLang]}</td>
+      <td>${met?`<span class="badge warn">${en?"metered":"従量"}</span>`:`<span class="badge ok">${en?"local":"ローカル"}</span>`}</td></tr>`;
+  }).join("");
+}
+
+/* ---------- 14. LIVE LINK ---------- */
+function setLink(ok, msg){
+  live.ok = ok;
+  $("#linkDot").className = "dot " + (ok?"live":"off");
+  $("#linkChip").textContent = msg || (ok?"LIVE":"OFFLINE");
+  $("#btnTick").disabled = !ok;
+}
+async function api(path, body){
+  if(!live.token){
+    const r = await fetch("/csrf_token", {credentials:"same-origin"});
+    if(!r.ok) throw new Error("csrf " + r.status);
+    live.token = (await r.json()).token;
+  }
+  const res = await fetch(path, {method:"POST", credentials:"same-origin",
+    headers:{"Content-Type":"application/json", "X-CSRF-Token":live.token},
+    body: JSON.stringify(Object.assign({timezone:"Asia/Tokyo"}, body||{}))});
+  if(res.status===403){
+    const body = (await res.text()).slice(0,120);
+    if(/csrf/i.test(body)){ live.token = null; throw new Error("CSRF 403 — " + body); }
+    throw new Error("403 — " + body);   // e.g. /scheduler_tick is loopback-only
+  }
+  if(!res.ok) throw new Error(path + " → " + res.status);
+  return res.json();
+}
+async function connectLive(){
+  const en = currentLang==="en";
+  if(location.protocol === "file:"){
+    setLink(false, "OFFLINE");
+    $("#liveOut").innerHTML = `<div class="note">${en
+      ? "Opened from the filesystem, so the API is out of reach. Serve this file from agent-zero (webui/orchestrator.html) and reload to enable the live link."
+      : "file:// で開いているため API に到達できない。agent-zero 経由（webui/orchestrator.html）で開き直すとライブ連携が有効になる。"}</div>`;
+    return;
+  }
+  try{
+    live.token = null; await api("/scheduler_tasks_list");
+    setLink(true, "LIVE");
+    await pullTasks();
+  }catch(e){
+    setLink(false, "OFFLINE");
+    $("#liveOut").innerHTML = `<div class="note">${en?"Could not reach the agent-zero API":"agent-zero API に到達できない"} — <span class="mono">${esc(e.message)}</span>. ${en
+      ? "Check that agent-zero is running and that you are signed in to the web UI in this browser."
+      : "agent-zero が起動しているか、このブラウザで Web UI にログイン済みかを確認すること。"}</div>`;
+  }
+}
+async function pullTasks(){
+  const en = currentLang==="en";
+  try{
+    const data = await api("/scheduler_tasks_list");
+    live.tasks = data.tasks || [];
+    const names = new Set(live.tasks.map(t => t.name));
+    const mine = all().filter(t => t.runner!=="claude");
+    const done = mine.filter(t => names.has(t.ja));
+    const todo = mine.filter(t => !names.has(t.ja));
+    const extra = live.tasks.filter(t => !TASKS.some(x => x.ja===t.name));
+    $("#liveOut").innerHTML = `
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin-bottom:10px">
+        <div class="kpi good"><span class="lbl">${en?"Already on agent-zero":"agent-zero に存在"}</span><span class="val">${done.length}</span></div>
+        <div class="kpi caution"><span class="lbl">${en?"Not migrated yet":"未移行"}</span><span class="val">${todo.length}</span></div>
+        <div class="kpi"><span class="lbl">${en?"Only on agent-zero":"台帳外（agent-zero のみ）"}</span><span class="val">${extra.length}</span></div>
+      </div>
+      ${todo.length ? `<div style="font-size:12px;color:var(--ink2)">${en?"Missing:":"未投入:"} ${todo.map(t=>`<span class="badge warn">${esc(en?t.en:t.ja)}</span>`).join(" ")}</div>`:""}
+      ${extra.length ? `<div style="font-size:12px;color:var(--ink2);margin-top:6px">${en?"Unknown to this ledger:":"台帳にない:"} ${extra.map(t=>`<span class="badge">${esc(t.name)}</span>`).join(" ")}</div>`:""}`;
+  }catch(e){
+    $("#liveOut").innerHTML = `<div class="note crit">${esc(e.message)}</div>`;
+  }
+}
+async function runRemote(t){
+  const en = currentLang==="en";
+  const hit = (live.tasks||[]).find(x => x.name===t.ja);
+  if(!hit){ alert(en?"No task with this name exists on agent-zero yet. Create it first from the Migration tab.":"agent-zero 側に同名タスクが存在しない。先に移行タブから投入すること。"); return; }
+  const gates = t.gates.filter(g => g!=="web").map(g => GATES[g][currentLang]).join(", ");
+  const msg = (en?"Run now on agent-zero?\n\n":"agent-zero で今すぐ実行するか？\n\n") + t.ja +
+    (gates ? (en?`\n\nUSER GATE: this task touches ${gates}. It must stop at a proposal.`:`\n\nUSER GATE: このタスクは ${gates} に触れる。提示までで停止させること。`) : "");
+  if(!confirm(msg)) return;
+  try{ await api("/scheduler_task_run", {task_id: hit.uuid}); alert(en?"Started.":"実行を開始した。"); }
+  catch(e){ alert(String(e.message)); }
+}
+
+
+/* ---------- 14b. RUNBOOK (PowerShell) ----------
+   Commands are stored with @@TOKENS@@ and filled from state.env, so no JS
+   interpolation runs inside PowerShell text. */
+function psFill(code){
+  const e = state.env;
+  return code
+    .split("@@REPO@@").join(e.repo)
+    .split("@@HOST@@").join(e.host)
+    .split("@@PORT@@").join(e.port)
+    .split("@@BRANCH@@").join(e.branch);
+}
+const RUNBOOK = [
+ {id:"rb0", m:"both", ord:0, gate:false,
+  tJa:"0. 前提の実測", tEn:"0. Measure the prerequisites",
+  wJa:"何も変更しない。python / git / docker が入っているかを見るだけ。",
+  wEn:"Changes nothing — just reports whether python, git and docker are present.",
+  code:String.raw`# 入っていないものは "not found" と出る。それが導入対象。
+foreach ($c in 'python','git','docker') {
+  $cmd = Get-Command $c -ErrorAction SilentlyContinue
+  if ($cmd) { "{0,-8} {1}" -f $c, (& $c --version 2>&1 | Select-Object -First 1) }
+  else      { "{0,-8} not found" -f $c }
+}
+"PSVersion  " + $PSVersionTable.PSVersion.ToString()`},
+
+ {id:"rb1", m:"both", ord:2, gate:false,
+  tJa:"1. 司令塔を取得する", tEn:"1. Fetch the deck",
+  wJa:"リポジトリを取得／更新し、対象ブランチに切り替える。作業ツリーに未コミットの変更があれば git が止める。",
+  wEn:"Clones or updates the repository and checks out the branch. git stops if the working tree has uncommitted changes.",
+  code:String.raw`$Repo   = '@@REPO@@'
+$Branch = '@@BRANCH@@'
+if (-not (Test-Path $Repo)) {
+  git clone https://github.com/gitgptmin1973/agent-zero.git $Repo
+}
+Set-Location $Repo
+git fetch origin $Branch
+git checkout $Branch
+git pull origin $Branch
+Get-Item (Join-Path $Repo 'webui\orchestrator.html') |
+  Select-Object FullName, Length, LastWriteTime`},
+
+ {id:"rb2", m:"local", ord:4, gate:false,
+  tJa:"2. ポートを実測して開く", tEn:"2. Measure the port, then open",
+  wJa:"読むだけ。.env の WEB_UI_PORT と実際の待受を確認し、実測値で URL を作ってブラウザを開く。待受が無ければ起動コマンドを表示する。",
+  wEn:"Read-only. Reads WEB_UI_PORT from .env, checks what is actually listening, builds the URL from that and opens it. If nothing is listening it prints the start command instead.",
+  code:String.raw`$Repo = '@@REPO@@'
+$Port = '@@PORT@@'                      # 実測が取れなかったときの控え
+$envFile = Join-Path $Repo '.env'
+if (Test-Path $envFile) {
+  $m = Select-String -Path $envFile -Pattern '^\s*WEB_UI_PORT\s*=\s*(\d+)' | Select-Object -First 1
+  if ($m) { $Port = $m.Matches[0].Groups[1].Value; "from .env: WEB_UI_PORT=$Port" }
+  else    { "WEB_UI_PORT が .env に無い。控えの $Port を使う" }
+} else { ".env が無い。控えの $Port を使う" }
+
+$listen = Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue
+if (-not $listen) {
+  "port $Port で待ち受けていない。先に起動する:"
+  "    Set-Location '$Repo'; python run_ui.py --port $Port"
+} else {
+  $url = "http://@@HOST@@:$Port/orchestrator.html"
+  "opening $url"
+  Start-Process $url
+}`},
+
+ {id:"rb3", m:"local", ord:5, gate:false,
+  tJa:"3. 投入前プリフライト", tEn:"3. Preflight the export",
+  wJa:"読むだけ。移行タブでコピーした tasks.json を保存したファイルを検査する。1件でも問題があれば止まる。",
+  wEn:"Read-only. Checks the tasks.json you copied from the Migration tab and saved. Stops if anything fails.",
+  code:String.raw`$Src = "$env:USERPROFILE\Downloads\tasks.json"   # コピーしたJSONの保存先
+$raw = Get-Content -Raw -Path $Src
+try { $data = $raw | ConvertFrom-Json } catch { throw "JSON として読めない: " + $_.Exception.Message }
+
+$req  = 'uuid','name','state','system_prompt','prompt','attachments','created_at','updated_at','last_run','last_result','context_id','type','schedule'
+$sreq = 'minute','hour','day','month','weekday','timezone'
+$errs = New-Object System.Collections.Generic.List[string]
+$seen = @{}
+if (-not $data.tasks) { $errs.Add('ルートに tasks 配列が無い') }
+foreach ($t in $data.tasks) {
+  $keys = $t.PSObject.Properties.Name
+  foreach ($k in $req)  { if ($keys -notcontains $k) { $errs.Add($t.name + ": キー " + $k + " が無い") } }
+  if ($t.type -ne 'scheduled') { $errs.Add($t.name + ": type が scheduled でない") }
+  if ($t.schedule) {
+    $sk = $t.schedule.PSObject.Properties.Name
+    foreach ($k in $sreq) { if ($sk -notcontains $k) { $errs.Add($t.name + ": schedule." + $k + " が無い") } }
+    if ($t.schedule.minute -match '^\d+$' -and [int]$t.schedule.minute -gt 59) { $errs.Add($t.name + ": minute が範囲外") }
+    if ($t.schedule.hour   -match '^\d+$' -and [int]$t.schedule.hour   -gt 23) { $errs.Add($t.name + ": hour が範囲外") }
+    if ($t.schedule.weekday -match '^\d+$' -and [int]$t.schedule.weekday -gt 6) { $errs.Add($t.name + ": weekday が範囲外") }
+  }
+  if ($seen.ContainsKey($t.name)) { $errs.Add("名前が重複: " + $t.name) } else { $seen[$t.name] = 1 }
+}
+if ($raw.Length -gt 0 -and [int]$raw[0] -eq 65279) { $errs.Add('先頭に BOM がある（読み込み時に落ちる）') }
+if ($errs.Count) { $errs | ForEach-Object { "NG  " + $_ }; throw ("" + $errs.Count + " 件。投入しないこと。") }
+"OK  " + $data.tasks.Count + " 件、検査通過"`},
+
+ {id:"rb4", m:"local", ord:6, gate:true,
+  tJa:"4. バックアップしてから投入", tEn:"4. Back up, then apply",
+  wJa:"既存の tmp/scheduler/tasks.json を退避してから置き換える。BOM を付けずに書く（read_file は utf-8 固定・BOM を剥がさない / files.py:85-95）。",
+  wEn:"Moves the existing tmp/scheduler/tasks.json aside, then replaces it. Written without a BOM — read_file opens with plain utf-8 and does not strip one (files.py:85-95).",
+  code:String.raw`$Repo = '@@REPO@@'
+$Src  = "$env:USERPROFILE\Downloads\tasks.json"
+$Dst  = Join-Path $Repo 'tmp\scheduler\tasks.json'
+New-Item -ItemType Directory -Force -Path (Split-Path $Dst) | Out-Null
+
+if (Test-Path $Dst) {
+  $bak = $Dst + '.' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.bak'
+  Copy-Item $Dst $bak
+  "backup  " + $bak
+  $old = (Get-Content -Raw $Dst | ConvertFrom-Json)
+  "既存 " + $old.tasks.Count + " 件を置き換える"
+}
+
+$json = Get-Content -Raw -Path $Src
+$null = $json | ConvertFrom-Json          # 壊れていればここで止まる
+# Set-Content -Encoding utf8 は PowerShell 5.1 で BOM を付ける。使わない。
+[System.IO.File]::WriteAllText($Dst, $json, [System.Text.UTF8Encoding]::new($false))
+
+$check = Get-Content -Raw $Dst | ConvertFrom-Json
+"wrote   " + $check.tasks.Count + " tasks -> " + $Dst
+$check.tasks | Select-Object name,
+  @{n='cron';e={ "" + $_.schedule.minute + " " + $_.schedule.hour + " * * " + $_.schedule.weekday }} |
+  Format-Table -AutoSize`},
+
+ {id:"rb5", m:"local", ord:7, gate:true,
+  tJa:"5. 直前の状態へ戻す", tEn:"5. Roll back",
+  wJa:"最新のバックアップで tasks.json を上書きする。ブロック4を実行した直後にしか意味がない。",
+  wEn:"Overwrites tasks.json from the newest backup. Only meaningful right after block 4.",
+  code:String.raw`$Dst = Join-Path '@@REPO@@' 'tmp\scheduler\tasks.json'
+$bak = Get-ChildItem ($Dst + '.*.bak') -ErrorAction SilentlyContinue |
+       Sort-Object LastWriteTime -Descending | Select-Object -First 1
+if (-not $bak) { throw 'バックアップが無い' }
+Copy-Item $bak.FullName $Dst -Force
+"restored from " + $bak.Name`},
+
+ {id:"rb6", m:"local", ord:8, gate:true,
+  tJa:"6. 常駐化と自己修復", tEn:"6. Keep it running, and healing",
+  wJa:"管理者権限が要る。ログオン時に agent-zero を起動するタスクと、5分ごとに応答を見て落ちていれば起こし直すタスクを登録する。Basic 認証の 401 は「生きている」と判定する。",
+  wEn:"Needs an elevated shell. Registers one task that starts agent-zero at logon and one that checks every five minutes and restarts it if it stopped answering. A 401 from basic auth counts as alive.",
+  code:String.raw`# 管理者として実行した PowerShell で
+$Repo = '@@REPO@@'
+$Port = '@@PORT@@'
+$Name = 'agent-zero web ui'
+$py   = (Get-Command python -ErrorAction Stop).Source
+
+$action  = New-ScheduledTaskAction -Execute $py -Argument ("run_ui.py --port " + $Port) -WorkingDirectory $Repo
+$trigger = New-ScheduledTaskTrigger -AtLogOn
+$set     = New-ScheduledTaskSettingsSet -StartWhenAvailable -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
+Register-ScheduledTask -TaskName $Name -Action $action -Trigger $trigger -Settings $set -Force |
+  Select-Object TaskName, State
+
+# ヘルスチェック: 5分ごとに応答を確認し、落ちていれば起こし直す
+$probe = @'
+$Port = "__PORT__"; $Name = "agent-zero web ui"; $alive = $false
+try {
+  Invoke-WebRequest ("http://127.0.0.1:" + $Port + "/") -UseBasicParsing -TimeoutSec 10 | Out-Null
+  $alive = $true
+} catch {
+  $resp = $_.Exception.Response
+  if ($resp) {
+    $code = [int]$resp.StatusCode            # 5.1 と 7 の両方で int になる
+    if ($code -eq 401 -or $code -eq 403) { $alive = $true }   # 認証が返る = 生きている
+  }
+}
+if (-not $alive) { Start-ScheduledTask -TaskName $Name }
+'@ -replace '__PORT__', $Port
+$probePath = Join-Path $Repo 'tmp\health-probe.ps1'
+[System.IO.File]::WriteAllText($probePath, $probe, [System.Text.UTF8Encoding]::new($false))
+
+$hAction  = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -ExecutionPolicy Bypass -File "' + $probePath + '"')
+# RepetitionDuration の MaxValue は「無期限」。古いビルドで弾かれたらこの引数だけ外す
+$hTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(5) -RepetitionInterval (New-TimeSpan -Minutes 5) -RepetitionDuration ([TimeSpan]::MaxValue)
+Register-ScheduledTask -TaskName 'agent-zero health probe' -Action $hAction -Trigger $hTrigger -Force |
+  Select-Object TaskName, State`},
+
+ {id:"rb7", m:"both", ord:9, gate:true, human:true,
+  tJa:"7. claude.ai 側を止める（人手）", tEn:"7. Switch the cloud side off (by hand)",
+  wJa:"PowerShell では到達できないが、Claude 経由なら Routines API で無効化できる（依頼ベース・USER GATE）。並走で差分が出なくなった行だけ、名前を指定して依頼するか、claude.ai の画面で自分で無効化する。どちらの経路でも削除はしない — 戻せなくなる。",
+  wEn:"Out of PowerShell's reach, but reachable through Claude: the routines API can disable a routine on request, behind a USER GATE. For each row whose parallel run stopped showing a diff, either name it and ask, or disable it yourself on claude.ai. Neither path deletes anything — deletion cannot be undone.",
+  code:null},
+
+ {id:"rb0p", m:"local", ord:1, gate:true,
+  tJa:"0b. Python 3.12 を隔離して入れる", tEn:"0b. Install Python 3.12 in isolation",
+  wJa:"システムの Python 3.14 はそのまま残る。py ランチャーが複数版を並存させ、依存は .venv フォルダの中だけに入る。捨てたいときは .venv を消すだけ。",
+  wEn:"Leaves system Python 3.14 alone. The py launcher keeps versions side by side and every dependency lands inside the .venv folder. To undo, delete .venv.",
+  code:String.raw`winget install -e --id Python.Python.3.12
+py -0p                                   # 並存している版の一覧。3.14 は消えない
+Set-Location '@@REPO@@'
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe --version`},
+
+ {id:"rb0n", m:"n8n", ord:1, gate:false,
+  tJa:"0b. 基盤3点の到達確認", tEn:"0b. Reach the three services",
+  wJa:"読むだけ。n8n・PostgreSQL・Ollama が応答するかを見る。ポートは既定値を仮に置いてあるので、違う場合は上の欄ではなくこの行を直す。",
+  wEn:"Read-only. Checks whether n8n, PostgreSQL and Ollama answer. The ports below are placeholders — edit the line, not the field above, if yours differ.",
+  code:String.raw`foreach ($svc in @(
+    @{n='n8n';        u='http://127.0.0.1:5678/healthz'},
+    @{n='Ollama';     u='http://127.0.0.1:11434/api/tags'}
+  )) {
+  try {
+    $r = Invoke-WebRequest -Uri $svc.u -TimeoutSec 5 -UseBasicParsing
+    "{0,-10} HTTP {1}" -f $svc.n, $r.StatusCode
+  } catch {
+    $c = $null; if ($_.Exception.Response) { $c = [int]$_.Exception.Response.StatusCode }
+    if ($c) { "{0,-10} HTTP {1}" -f $svc.n, $c } else { "{0,-10} 応答なし" -f $svc.n }
+  }
+}
+$pg = Get-NetTCPConnection -State Listen -LocalPort 5432 -ErrorAction SilentlyContinue
+if ($pg) { 'PostgreSQL 5432 で待受中' } else { 'PostgreSQL 5432 は待受なし（ポート違いなら読み替える）' }`},
+
+ {id:"rb1n", m:"n8n", ord:3, gate:false,
+  tJa:"1b. 使えるモデルを一覧する", tEn:"1b. List the models you actually have",
+  wJa:"読むだけ。Ollama に入っているモデル名をそのまま取り出す。モデル名は版ごとに変わるので、ここで見えた名前を次のワークフローに入れる（こちらで決め打ちしない）。",
+  wEn:"Read-only. Lists the model names Ollama actually holds. Tags change between releases, so copy what you see here into the workflow rather than trusting a hard-coded name.",
+  code:String.raw`$tags = Invoke-RestMethod -Uri 'http://127.0.0.1:11434/api/tags' -TimeoutSec 10
+$tags.models | Select-Object name, size, @{n='modified';e={$_.modified_at}} | Format-Table -AutoSize
+'--- 未導入なら例: ollama pull qwen3  （タグは ollama.com/library で実測してから）'`},
+
+ {id:"rb2n", m:"n8n", ord:4, gate:false,
+  tJa:"2. 司令塔を開く", tEn:"2. Open the deck",
+  wJa:"読むだけ。n8n 構成では agent-zero を起動しないので、司令塔はファイルのまま開く。ライブ連携は使わず、台帳・編成・エクスポートだけを使う。",
+  wEn:"Read-only. In the n8n setup nothing needs agent-zero running, so the deck opens straight from the file. The live link stays off; you use the ledger, the waves and the exports.",
+  code:String.raw`$deck = Join-Path '@@REPO@@' 'webui\orchestrator.html'
+if (Test-Path $deck) { Start-Process $deck } else { "見つからない: " + $deck + "  → ブロック1を先に実行する" }`},
+
+ {id:"rb3n", m:"n8n", ord:5, gate:true,
+  tJa:"3. ワークフローを取り込む", tEn:"3. Import the workflows",
+  wJa:"移行タブの「n8n ワークフロー」をファイルに保存してから取り込む。取り込み直後はすべて停止状態なので、1本だけ手動実行して確かめてから有効化する。",
+  wEn:"Save the Migration tab's n8n export to a file first. Everything imports inactive — run one by hand, check it, then activate.",
+  code:String.raw`$Src = "$env:USERPROFILE\Downloads\minopro-n8n.json"
+$raw = Get-Content -Raw -Path $Src
+try { $wf = $raw | ConvertFrom-Json } catch { throw "JSON として読めない: " + $_.Exception.Message }
+"ワークフロー " + $wf.Count + " 本"
+$wf | ForEach-Object { " - " + $_.name + "   " + $_.nodes[0].parameters.rule.interval[0].expression }
+
+# 取り込み（n8n の CLI が PATH にある前提。無ければ n8n 画面の Import from File でも同じ）
+n8n import:workflow --input="$Src"
+# 取り込み後: n8n の画面で1本だけ手動実行 → 結果を確認 → Active に切り替える`},
+
+ {id:"rb6n", m:"n8n", ord:8, gate:false,
+  tJa:"6. 動いているかを見る", tEn:"6. See whether it is still running",
+  wJa:"読むだけ。n8n が応答するかと、Ollama が生きているかを見る。止まっていた場合の再起動方法は n8n の入れ方（サービス／PM2／手動）で変わるため、ここでは判定だけを出す。",
+  wEn:"Read-only. Checks that n8n and Ollama still answer. How to restart depends on how n8n was installed (service, PM2 or by hand), so this only reports.",
+  code:String.raw`$ok = $true
+foreach ($u in 'http://127.0.0.1:5678/healthz','http://127.0.0.1:11434/api/tags') {
+  try { Invoke-WebRequest -Uri $u -TimeoutSec 5 -UseBasicParsing | Out-Null; "OK  " + $u }
+  catch { $ok = $false; "NG  " + $u }
+}
+if (-not $ok) { '落ちている。n8n / Ollama の起動方法に合わせて再起動すること（サービスなら Restart-Service、PM2 なら pm2 restart）' }`},
+
+ {id:"rb9", m:"both", ord:1.5, gate:true,
+  tJa:"0c. 中核MD（MNRKW-STATE.md）を自律更新する", tEn:"0c. Refresh the single core ledger",
+  wJa:"参照先は常にこの1枚。無ければ作り、あれば台帳区画を差し替え、環境区画を実測で上書きし、履歴に1行追記する。派生MDは作らない。",
+  wEn:"One file, always. Creates it if absent; otherwise swaps the ledger region, overwrites the environment region with measured facts and appends one history line. No secondary files.",
+  code:String.raw`$Repo  = '@@REPO@@'
+$State = Join-Path $Repo 'MNRKW-STATE.md'
+$Fresh = "$env:USERPROFILE\Downloads\MNRKW-STATE.md"   # 司令塔でコピーして保存したもの
+
+# 1. 無ければ、司令塔の出力をそのまま中核MDにする
+if (-not (Test-Path $State)) {
+  if (-not (Test-Path $Fresh)) { throw '中核MDが無い。司令塔の「中核MD」をコピーして ' + $Fresh + ' に保存してから実行する' }
+  Copy-Item $Fresh $State
+  '作成した: ' + $State
+}
+
+# 2. 環境を実測する
+$L = New-Object System.Collections.Generic.List[string]
+$L.Add('巡回: ' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss zzz') + ' / ' + $env:COMPUTERNAME)
+$L.Add('')
+$L.Add('| 項目 | 実測 |')
+$L.Add('|---|---|')
+$L.Add('| OS | ' + (Get-CimInstance Win32_OperatingSystem).Caption + ' |')
+$L.Add('| PowerShell | ' + $PSVersionTable.PSVersion.ToString() + ' |')
+foreach ($c in 'python','py','git','docker','node','n8n','ollama','psql') {
+  $cmd = Get-Command $c -ErrorAction SilentlyContinue
+  if ($cmd) { $L.Add('| ' + $c + ' | ' + (& $c --version 2>&1 | Select-Object -First 1) + ' |') }
+  else      { $L.Add('| ' + $c + ' | 未導入 |') }
+}
+foreach ($pt in 5678,11434,5432,50001,8069) {
+  $li = Get-NetTCPConnection -State Listen -LocalPort $pt -ErrorAction SilentlyContinue
+  $L.Add('| port ' + $pt + ' | ' + $(if ($li) { '待受中' } else { '待受なし' }) + ' |')
+}
+try {
+  $tags = Invoke-RestMethod -Uri 'http://127.0.0.1:11434/api/tags' -TimeoutSec 8
+  $L.Add('| Ollama モデル | ' + (($tags.models | ForEach-Object { $_.name }) -join ', ') + ' |')
+} catch { $L.Add('| Ollama モデル | 取得できず |') }
+$tasks = Join-Path $Repo 'tmp\scheduler\tasks.json'
+if (Test-Path $tasks) {
+  try {
+    $tj = (Get-Content -Raw -Path $tasks | ConvertFrom-Json)
+    $L.Add('| agent-zero タスク | ' + $tj.tasks.Count + ' 本 |')
+    $L.Add('')
+    $tj.tasks | ForEach-Object { $L.Add('- agent-zero: ' + $_.name + ' [' + $_.state + '] next=' + $_.next_run) }
+  } catch { $L.Add('| agent-zero タスク | tasks.json を読めない |') }
+} else { $L.Add('| agent-zero タスク | 未投入 |') }
+if (Get-Command n8n -ErrorAction SilentlyContinue) {
+  $L.Add('')
+  try { (n8n list:workflow 2>&1) | ForEach-Object { $L.Add('- n8n: ' + $_) } } catch { $L.Add('- n8n: 一覧を取得できず') }
+}
+$sweep = ($L -join [Environment]::NewLine)
+
+# 3. 中核MDを書き換える（台帳区画は司令塔の出力があれば差し替え、無ければ温存）
+$raw = Get-Content -Raw -Path $State
+foreach ($mk in 'LEDGER','SWEEP','LOG') {
+  if ($raw -notmatch ('(?s)<!-- ' + $mk + ':BEGIN -->.*?<!-- ' + $mk + ':END -->')) { throw ($mk + ' マーカーが無い。司令塔から中核MDを出し直すこと。') }
+}
+if (Test-Path $Fresh) {
+  $new = Get-Content -Raw -Path $Fresh
+  $m = [regex]::Match($new, '(?s)<!-- LEDGER:BEGIN -->(.*?)<!-- LEDGER:END -->')
+  if ($m.Success) {
+    $raw = [regex]::Replace($raw, '(?s)(<!-- LEDGER:BEGIN -->).*?(<!-- LEDGER:END -->)', ('$1' + $m.Groups[1].Value + '$2'))
+    '台帳区画を差し替えた'
+  }
+}
+$raw = [regex]::Replace($raw, '(?s)(<!-- SWEEP:BEGIN -->).*?(<!-- SWEEP:END -->)', ('$1' + [Environment]::NewLine + $sweep + [Environment]::NewLine + '$2'))
+$line = '- ' + (Get-Date -Format 'yyyy-MM-dd HH:mm') + ' 巡回: ' + $env:COMPUTERNAME
+$raw = [regex]::Replace($raw, '(?s)(<!-- LOG:BEGIN -->)(.*?)(<!-- LOG:END -->)', ('$1$2' + $line + [Environment]::NewLine + '$3'))
+
+Copy-Item $State ($State + '.' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.bak')
+[System.IO.File]::WriteAllText($State, $raw, (New-Object System.Text.UTF8Encoding($false)))
+'更新した: ' + $State
+$L | Select-Object -First 16`}
+];
+const MODES = {
+  n8n:{ja:"n8n ＋ Ollama（Docker不使用）", en:"n8n + Ollama (no Docker)"},
+  local:{ja:"agent-zero（隔離venv）", en:"agent-zero (isolated venv)"}
+};
+function renderModePanel(){
+  const en = currentLang==="en";
+  $("#modePicker").innerHTML = Object.keys(MODES).map(k =>
+    `<button class="chip" data-mode="${k}" aria-pressed="${state.env.mode===k}">${MODES[k][currentLang]}</button>`).join("");
+  $("#modePicker").querySelectorAll(".chip").forEach(c => c.onclick = () => {
+    state.env.mode = c.dataset.mode;
+    save(); renderRunbook(); $("#envPort").value = state.env.port;
+  });
+  $("#modeNote").innerHTML = state.env.mode==="n8n" ? `<div class="note info">
+    <span class="ja"><b>n8n が予定表を持つ構成。</b> 19本のスケジュールは n8n の Schedule Trigger（<code class="mono">n8n-nodes-base.scheduleTrigger</code>・cron 5フィールド）に載せ、推論は Ollama に投げる。agent-zero も Docker も不要で、システムの Python 3.14 に一切触らない。司令塔はこの構成では台帳・編成・エクスポート専用として使う（ライブ連携は agent-zero 用）。</span>
+    <span class="en"><b>n8n owns the schedule.</b> The 19 jobs ride n8n's Schedule Trigger (<code class="mono">n8n-nodes-base.scheduleTrigger</code>, 5-field cron) and inference goes to Ollama. No agent-zero, no Docker, and system Python 3.14 stays untouched. Here the deck is the ledger, the wave planner and the exporter; the live link belongs to the agent-zero setup.</span></div>` : `<div class="note">
+    <span class="ja"><b>agent-zero を使う場合だけ Python 3.12 が要る。</b> <code class="mono">requirements.txt</code> が faiss-cpu 1.11.0・sentence-transformers 3.0.1・openai-whisper などを固定しており、手順書も 3.12 前提（<code class="mono">docs/installation.md:432</code>）。<b>システムの 3.14 は残したまま</b>、<code class="mono">py -3.12 -m venv .venv</code> でこのフォルダの中だけに閉じ込める。捨てるときは <code class="mono">.venv</code> を削除するだけで、他の Python 環境に影響しない。</span>
+    <span class="en"><b>Python 3.12 is only needed if you run agent-zero.</b> <code class="mono">requirements.txt</code> pins faiss-cpu 1.11.0, sentence-transformers 3.0.1 and openai-whisper, and the guide assumes 3.12 (<code class="mono">docs/installation.md:432</code>). <b>Keep system 3.14</b> and confine it with <code class="mono">py -3.12 -m venv .venv</code>; deleting <code class="mono">.venv</code> undoes everything and touches no other environment.</span></div>`;
+}
+function renderRunbook(){
+  const en = currentLang==="en";
+  renderModePanel();
+  const box = $("#runbook"); box.innerHTML = "";
+  RUNBOOK.filter(b => b.m==="both" || b.m===state.env.mode)
+         .sort((a,b) => a.ord-b.ord)
+         .forEach(b => {
+    const card = el("div","panel");
+    card.style.marginBottom = "12px";
+    const gate = b.gate ? `<span class="badge crit">${en?"USER GATE":"USER GATE"}</span>` : "";
+    const human = b.human ? `<span class="badge warn">${en?"by hand":"人手"}</span>` : "";
+    card.innerHTML = `
+      <div class="row" style="justify-content:space-between;align-items:flex-start">
+        <div style="flex:1 1 260px">
+          <b style="font-size:13.5px">${en?b.tEn:b.tJa}</b>
+          <div style="font-size:12px;color:var(--ink2);margin-top:2px">${en?b.wEn:b.wJa}</div>
+        </div>
+        <div class="row" style="gap:6px;flex:0 0 auto">${gate}${human}
+          ${b.code ? `<button class="btn ghost" data-rb="${b.id}">${en?"Copy":"コピー"}</button>` : ""}</div>
+      </div>
+      ${b.code ? `<pre class="out" style="margin-top:10px">${esc(psFill(b.code))}</pre>` : ""}`;
+    box.appendChild(card);
+  });
+  box.querySelectorAll("button[data-rb]").forEach(btn => btn.onclick = () => {
+    const b = RUNBOOK.find(x => x.id===btn.dataset.rb);
+    copyText(psFill(b.code), btn);
+  });
+}
+/* ---------- 14c. PREFLIGHT (same checks as runbook block 3) ---------- */
+function preflightTasks(text){
+  const out = [];
+  if(text.charCodeAt(0) === 0xFEFF) out.push("BOM が先頭にある（agent-zero の read_file は utf-8 固定で BOM を剥がさない）");
+  let d;
+  try{ d = JSON.parse(text); }catch(e){ return ["JSON として読めない: " + e.message]; }
+  if(!d || !Array.isArray(d.tasks)) return ["ルートに tasks 配列が無い"];
+  const req = ["uuid","name","state","system_prompt","prompt","attachments","created_at","updated_at","last_run","last_result","context_id","type","schedule"];
+  const sreq = ["minute","hour","day","month","weekday","timezone"];
+  const seen = new Set();
+  d.tasks.forEach(t => {
+    req.forEach(k => { if(!(k in t)) out.push(`${t.name||"?"}: キー ${k} が無い`); });
+    if(t.type !== "scheduled") out.push(`${t.name}: type が scheduled でない`);
+    if(t.schedule){
+      sreq.forEach(k => { if(!(k in t.schedule)) out.push(`${t.name}: schedule.${k} が無い`); });
+      const n = k => /^\d+$/.test(t.schedule[k]) ? +t.schedule[k] : null;
+      if(n("minute") > 59) out.push(`${t.name}: minute が範囲外`);
+      if(n("hour") > 23) out.push(`${t.name}: hour が範囲外`);
+      if(n("weekday") > 6) out.push(`${t.name}: weekday が範囲外`);
+    }
+    if(seen.has(t.name)) out.push(`名前が重複: ${t.name}`); else seen.add(t.name);
+    if(!Number.isFinite(Date.parse(t.created_at))) out.push(`${t.name}: created_at が ISO 8601 として読めない`);
+  });
+  return out;
+}
+function runPreflight(){
+  const en = currentLang==="en";
+  const target = $("#preflightOut");
+  if(state.exportKind !== "tasks"){
+    target.innerHTML = `<div class="note">${en?"Switch to the tasks.json export to run this check.":"tasks.json のエクスポートに切り替えてから実行する。"}</div>`;
+    return;
+  }
+  const issues = preflightTasks($("#exportOut").textContent);
+  target.innerHTML = issues.length
+    ? `<div class="note crit"><b>${issues.length} ${en?"problems — do not apply":"件の問題。投入しないこと"}</b>
+        <ul class="tight">${issues.map(i => `<li>${esc(i)}</li>`).join("")}</ul></div>`
+    : `<div class="note info"><b>${en?"Passed":"検査通過"}</b> — ${en
+        ? "keys, type, schedule fields, cron ranges, duplicate names and timestamps all check out."
+        : "キー・type・schedule・cron 範囲・名前重複・日時形式すべて問題なし。"}</div>`;
+}
+/* shared clipboard helper */
+async function copyText(text, btn){
+  try{ await navigator.clipboard.writeText(text); }
+  catch(e){
+    const ta = document.createElement("textarea");
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    try{ document.execCommand("copy"); }catch(_){}
+    ta.remove();
+  }
+  if(btn){
+    const old = btn.innerHTML;
+    btn.innerHTML = currentLang==="en" ? "Copied" : "コピーした";
+    setTimeout(() => { btn.innerHTML = old; }, 1400);
+  }
+}
+
+/* ---------- 15. INIT ---------- */
+function renderAll(){
+  renderTabs(); renderKPI(); renderTimeline(); renderHeat(); renderMix();
+  renderTable(); renderDrawer(); renderWaves(); renderDag(); renderCollide();
+  renderPhases(); renderVerdicts(); renderExport(); renderGates(); renderRunbook();
+  renderDoctrine(); renderChecklist(); renderLegal(); renderCost();
+  $("#conc").value = state.conc; $("#step").value = state.step;
+  ["pin","pout","fx","tl","tm","th"].forEach(k => { $("#"+k).value = state.cost[k]; });
+  $("#envRepo").value = state.env.repo; $("#envHost").value = state.env.host;
+  $("#envPort").value = state.env.port; $("#envBranch").value = state.env.branch;
+  $("#originChip").textContent = location.protocol==="file:" ? "file://" : location.origin;
+  showTab();
+}
+function applyTheme(){
+  if(state.theme==="auto") document.documentElement.removeAttribute("data-theme");
+  else document.documentElement.setAttribute("data-theme", state.theme);
+}
+function init(){
+  load();
+  if(!state.tab) state.tab = "command";
+  applyTheme();
+  $("#btnTheme").onclick = () => {
+    state.theme = state.theme==="auto" ? "light" : state.theme==="light" ? "dark" : "auto";
+    save(); applyTheme(); renderAll();
+  };
+  $("#btnConnect").onclick = connectLive;
+  $("#btnPull").onclick = () => live.ok ? pullTasks() : connectLive();
+  $("#btnTick").onclick = async () => {
+    if(!confirm(currentLang==="en"?"Ask agent-zero to evaluate due tasks now?":"agent-zero に期限到来タスクの評価を今すぐ行わせるか？")) return;
+    try{ await api("/scheduler_tick"); await pullTasks(); }catch(e){ alert(String(e.message)); }
+  };
+  $("#q").oninput = e => { state.q = e.target.value; save(); renderTable(); };
+  $("#btnResetOv").onclick = () => {
+    if(!confirm(currentLang==="en"?"Discard every local edit (tier, runner, offsets, enabled)?":"ローカル編集（Tier・実行先・オフセット・有効／無効）をすべて破棄するか？")) return;
+    state.ov = {}; save(); renderAll();
+  };
+  $("#conc").onchange = e => { state.conc = Math.max(1, Math.min(8, +e.target.value||1)); save(); renderAll(); };
+  $("#step").onchange = e => { state.step = Math.max(1, Math.min(60, +e.target.value||10)); save(); renderAll(); };
+  $("#btnJitter").onclick = autoResolve;
+  $("#btnJitterReset").onclick = () => {
+    Object.keys(state.ov).forEach(k => { delete state.ov[k].off; });
+    save(); renderAll();
+  };
+  ["pin","pout","fx","tl","tm","th"].forEach(k => {
+    $("#"+k).oninput = e => { state.cost[k] = e.target.value; save(); renderCost(); };
+  });
+  $("#btnCopy").onclick = () => copyText($("#exportOut").textContent, $("#btnCopy"));
+  $("#btnPreflight").onclick = runPreflight;
+  [["envRepo","repo"],["envHost","host"],["envPort","port"],["envBranch","branch"]].forEach(([id,k]) => {
+    $("#"+id).oninput = e => { state.env[k] = e.target.value; save(); renderRunbook(); };
+  });
+  document.addEventListener("keydown", e => { if(e.key==="Escape" && selected){ selected = null; renderDrawer(); renderTable(); } });
+  setLang("ja");
+  connectLive();
+}
+init();
+</script>
+</body>
+</html>
