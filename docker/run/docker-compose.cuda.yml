@@ -1,0 +1,46 @@
+# Agent Zero — NVIDIA GPU compose file
+# Requires: NVIDIA driver + NVIDIA Container Toolkit on the host.
+# Usage:  docker compose -f docker-compose.cuda.yml up -d
+services:
+  agent-zero:
+    container_name: agent-zero-cuda
+    image: ${A0_CUDA_IMAGE:-agent-zero-run-cuda:local}
+    build:
+      context: .
+      dockerfile: Dockerfile.cuda
+      args:
+        BASE_TAG: ${A0_BASE_TAG:-latest}
+    volumes:
+      - ./agent-zero:/a0
+    ports:
+      # bound to localhost by default; set A0_BIND=0.0.0.0 to expose on the LAN
+      - "${A0_BIND:-127.0.0.1}:${A0_PORT:-50080}:80"
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - PYTHONUNBUFFERED=1
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: ${NVIDIA_GPU_COUNT:-all}
+              capabilities: [gpu]
+    # --- safe-operation defaults ---
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 60s
+    mem_limit: ${A0_MEM_LIMIT:-16g}
+    pids_limit: 4096
+    shm_size: 2g
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"

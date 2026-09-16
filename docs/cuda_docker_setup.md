@@ -1,104 +1,96 @@
 # Agent Zero: CUDA GPU Support 🚀
 
-This guide explains how to build and run Agent Zero with NVIDIA GPU acceleration using CUDA. Running with CUDA enables faster performance for AI workloads by leveraging your GPU.
+Run Agent Zero with NVIDIA GPU acceleration. The CUDA image is a **thin overlay on the regular run image**: only `torch`/`torchvision` (CPU → CUDA wheels) and `faiss-cpu` (→ `faiss-gpu-cu12`) are swapped, everything else is inherited unchanged. CUDA runtime libraries are bundled in the pip wheels and the driver is injected by the NVIDIA Container Toolkit, so no CUDA apt packages are installed.
+
+What gets faster: local embeddings (`sentence-transformers`), Whisper speech-to-text, FAISS memory search. Remote LLM API calls are unaffected.
 
 ---
 
 ## Prerequisites
 
-Before you begin, ensure you have:
-
-1. **NVIDIA GPU** with CUDA capability
-2. **NVIDIA Driver** installed on your host system
-3. **NVIDIA Container Toolkit** ([Install Guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html))  
-   _This enables Docker to access your GPU_
-4. **Docker** and **Docker Compose** installed
-
----
-
-## 1. Build the CUDA Docker Image
-
-Open a terminal in this directory and run:
-
-```bash
-# Set the branch you want to build from (default: main)
-$branch="main"
-docker build --no-cache -t frdel/agent-zero-run-cuda:testing --build-arg BRANCH=$branch -f Dockerfile.cuda .
-```
-
----
-
-## 2. Run Agent Zero with CUDA Support
-
-You can start Agent Zero with GPU support using Docker Compose:
-
-```bash
-# On Linux, macOS, or Windows PowerShell:
-docker-compose -f docker-compose.cuda.yml up -d
-```
-
-- This will launch Agent Zero in the background with GPU acceleration enabled.
-
----
-
-## 3. Access Agent Zero
-
-Once the container is running, open your browser and go to:
-
-[http://localhost:50080](http://localhost:50080)
-
----
-
-## 4. Stopping Agent Zero
-
-To stop the CUDA-enabled Agent Zero container:
-
-```bash
-docker-compose -f docker-compose.cuda.yml down
-```
-
----
-
-## 5. Switching Between CPU and GPU Versions
-
-You can easily switch between the CPU and GPU versions:
-
-1. **Stop the currently running version:**
+1. **NVIDIA GPU** (CUDA 12 capable) and a **driver ≥ 550** on the host
+2. **NVIDIA Container Toolkit** ([install guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)) — verify with:
    ```bash
-   # For CPU version:
-   docker-compose down
-   # For GPU version:
-   docker-compose -f docker-compose.cuda.yml down
+   docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi
    ```
-
-2. **Start the version you want:**
-   ```bash
-   # CPU version:
-   docker-compose -f docker-compose.yml up -d
-
-   # GPU (CUDA) version:
-   docker-compose -f docker-compose.cuda.yml up -d
-   ```
+3. **Docker Engine + Docker Compose v2** (`docker compose version`)
 
 ---
 
-## Troubleshooting & Tips
+## 1. Build the CUDA image
 
-- **First time setup may take several minutes** as dependencies are downloaded and installed.
-- If you encounter issues with GPU access, verify your NVIDIA drivers and the NVIDIA Container Toolkit are correctly installed.
-- To check if CUDA is available inside the container, you can run:
-  ```bash
-  docker exec -it <container_name> python3 -c "import torch; print(torch.cuda.is_available())"
-  ```
-- For advanced configuration, see the comments in [`Dockerfile.cuda`](mdc:docker/run/Dockerfile.cuda).
+From the `docker/run` directory:
+
+```bash
+docker compose -f docker-compose.cuda.yml build
+```
+
+Build args (pass with `--build-arg` or via env for compose):
+
+| Arg | Default | Purpose |
+|---|---|---|
+| `BASE_IMAGE` / `BASE_TAG` | `frdel/agent-zero-run` / `latest` | run image to overlay (`A0_BASE_TAG=development` for compose) |
+| `TORCH_INDEX_URL` | `.../whl/cu124` | use `.../whl/cu121` for older drivers |
+| `TORCH_VERSION`, `TORCHVISION_VERSION`, `FAISS_GPU_VERSION` | pinned to base image | keep in sync with `requirements.txt` |
+
+The build fails early if the installed torch is not a CUDA build or faiss lacks GPU support.
+
+---
+
+## 2. Run
+
+```bash
+docker compose -f docker-compose.cuda.yml up -d
+```
+
+Open [http://localhost:50080](http://localhost:50080).
+
+Runtime knobs (environment variables, e.g. in a `.env` next to the compose file):
+
+| Var | Default | Purpose |
+|---|---|---|
+| `A0_BIND` | `127.0.0.1` | set `0.0.0.0` to expose on the LAN (put auth in front first) |
+| `A0_PORT` | `50080` | host port |
+| `NVIDIA_VISIBLE_DEVICES` | `all` | e.g. `0` to pin one GPU |
+| `NVIDIA_GPU_COUNT` | `all` | number of GPUs reserved |
+| `A0_MEM_LIMIT` | `16g` | container RAM cap |
+
+Safe-operation defaults baked into the compose file: `restart: unless-stopped`, `init`, 60 s stop grace, `/health` healthcheck, log rotation (5 × 20 MB), PID limit, localhost-only port binding.
+
+---
+
+## 3. Verify GPU is used
+
+```bash
+docker exec agent-zero-cuda nvidia-smi
+docker exec agent-zero-cuda /opt/venv/bin/python -c "import torch,faiss;print(torch.cuda.is_available(), torch.cuda.get_device_name(0), faiss.get_num_gpus())"
+docker inspect --format '{{.State.Health.Status}}' agent-zero-cuda   # healthy
+```
+
+---
+
+## 4. Stop / switch CPU ↔ GPU
+
+Both compose files mount the same `./agent-zero` data directory, so switching loses nothing.
+
+```bash
+docker compose -f docker-compose.cuda.yml down     # stop GPU
+docker compose up -d                               # start CPU
+```
+
+---
+
+## Troubleshooting
+
+- **`could not select device driver "nvidia"`** → NVIDIA Container Toolkit missing or Docker not restarted after install (`sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker`).
+- **`torch.cuda.is_available()` is `False` inside the container** → driver too old for the wheel's CUDA version; rebuild with `--build-arg TORCH_INDEX_URL=https://download.pytorch.org/whl/cu121`.
+- **Container restarts in a loop** → `docker logs agent-zero-cuda`; the healthcheck only passes once the UI answers on `/health`, allow up to 2 min on first start (`start_period`).
+- **OOM** → raise `A0_MEM_LIMIT`, or lower model sizes in Settings.
 
 ---
 
 ## More Information
 
-- [NVIDIA Container Toolkit Documentation](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
-- [Agent Zero Project](https://github.com/frdel/agent-zero) (replace with your actual repo link if different)
-
----
-
-**Enjoy accelerated AI with Agent Zero and CUDA!**
+- [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/)
+- [PyTorch CUDA wheels](https://pytorch.org/get-started/locally/)
+- [Agent Zero](https://github.com/frdel/agent-zero)

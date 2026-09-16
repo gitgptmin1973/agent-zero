@@ -3,6 +3,7 @@
 To begin with Agent Zero, follow the links below for detailed guides on various topics:
 
 - **[Installation](installation.md):** Set up (or [update](installation.md#how-to-update-agent-zero)) Agent Zero on your system.
+- **[CUDA GPU Support](cuda_docker_setup.md):** Run the Docker image with NVIDIA GPU acceleration.
 - **[Usage Guide](usage.md):** Explore GUI features and usage scenarios.
 - **[Architecture Overview](architecture.md):** Understand the internal workings of the framework.
 - **[Contributing](contribution.md):** Learn how to contribute to the Agent Zero project.

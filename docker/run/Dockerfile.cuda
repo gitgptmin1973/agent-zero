@@ -1,0 +1,46 @@
+# Agent Zero — NVIDIA CUDA overlay image
+#
+# Thin layer on top of the regular run image: everything (Kali base, Python 3.12
+# venv, requirements, playwright, searxng, supervisord) is inherited unchanged.
+# Only the compute stack is swapped:
+#   * torch/torchvision CPU wheels  -> CUDA 12.x wheels (same pinned versions)
+#   * faiss-cpu                     -> faiss-gpu-cu12 (same pinned version)
+# CUDA runtime libraries ship inside the pip wheels; the driver is injected at
+# run time by the NVIDIA Container Toolkit, so no apt CUDA packages are needed.
+#
+# Build (from docker/run):
+#   docker build -t agent-zero-run-cuda:local -f Dockerfile.cuda .
+#   docker build -t agent-zero-run-cuda:local -f Dockerfile.cuda --build-arg BASE_TAG=development .
+
+ARG BASE_IMAGE=frdel/agent-zero-run
+ARG BASE_TAG=latest
+FROM ${BASE_IMAGE}:${BASE_TAG}
+
+# Pinned to the versions used by the base image (docker/base/fs/ins/install_python.sh
+# and requirements.txt) so the rest of the dependency tree is untouched.
+ARG TORCH_VERSION=2.4.0
+ARG TORCHVISION_VERSION=0.19.0
+ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cu124
+ARG FAISS_GPU_VERSION=1.11.0
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+RUN set -eux; \
+    . /opt/venv/bin/activate; \
+    pip uninstall -y torch torchvision faiss-cpu || true; \
+    pip install --no-cache-dir \
+        "torch==${TORCH_VERSION}" \
+        "torchvision==${TORCHVISION_VERSION}" \
+        --index-url "${TORCH_INDEX_URL}"; \
+    pip install --no-cache-dir "faiss-gpu-cu12==${FAISS_GPU_VERSION}"; \
+    # build-time sanity: CUDA build must be present (no GPU at build time, so is_available() is not checked)
+    python -c 'import torch, faiss; assert torch.version.cuda, "torch is not a CUDA build"; assert hasattr(faiss, "StandardGpuResources"), "faiss has no GPU support"; print("torch", torch.__version__, "cuda", torch.version.cuda, "faiss", faiss.__version__, "gpu ok")'; \
+    pip cache purge; \
+    uv cache prune || true
+
+SHELL ["/bin/sh", "-c"]
+
+# Same runtime as the base run image
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
+ENV PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
