@@ -1369,6 +1369,7 @@ function buildExport(kind){
     L.push("");
     L.push("- 2026-09-16 Docker 不使用。基盤は Odoo + n8n + PostgreSQL + Python + Ollama + Qwen。");
     L.push("- 2026-09-16 参照MDは本ファイル1枚のみ。派生MDを作らない。");
+    L.push("- 2026-09-16 claude.ai 側の停止・時刻変更は Routines API 経由で Claude が実行できる（USER GATE：本人の明示指示が要る。削除は行わない）。");
     L.push("");
     return L.join("\n");
   }
@@ -1857,8 +1858,8 @@ Register-ScheduledTask -TaskName 'agent-zero health probe' -Action $hAction -Tri
 
  {id:"rb7", m:"both", ord:9, gate:true, human:true,
   tJa:"7. claude.ai 側を止める（人手）", tEn:"7. Switch the cloud side off (by hand)",
-  wJa:"PowerShell では到達できない。並走で差分が出なくなった行だけ、claude.ai のスケジュール済みタスクを開いて無効化する。削除しない — 戻せなくなる。",
-  wEn:"Out of PowerShell's reach. For each row whose parallel run stopped showing a diff, open the scheduled task on claude.ai and disable it. Do not delete — deletion cannot be undone.",
+  wJa:"PowerShell では到達できないが、Claude 経由なら Routines API で無効化できる（依頼ベース・USER GATE）。並走で差分が出なくなった行だけ、名前を指定して依頼するか、claude.ai の画面で自分で無効化する。どちらの経路でも削除はしない — 戻せなくなる。",
+  wEn:"Out of PowerShell's reach, but reachable through Claude: the routines API can disable a routine on request, behind a USER GATE. For each row whose parallel run stopped showing a diff, either name it and ask, or disable it yourself on claude.ai. Neither path deletes anything — deletion cannot be undone.",
   code:null},
 
  {id:"rb0p", m:"local", ord:1, gate:true,

@@ -17,7 +17,7 @@
 
 | 項目 | 値 |
 |---|---|
-| 台帳生成 | 2026-09-16T10:04:56.695Z |
+| 台帳生成 | 2026-09-16T10:47:59.152Z |
 | 登録タスク | 20 本（有効 20） |
 | 時刻 実測 / 未確認 | 20 / 0 本 |
 | 出典 | claude.ai Routines API（list_triggers）の cron_expression を JST 換算 |
@@ -97,3 +97,4 @@
 
 - 2026-09-16 Docker 不使用。基盤は Odoo + n8n + PostgreSQL + Python + Ollama + Qwen。
 - 2026-09-16 参照MDは本ファイル1枚のみ。派生MDを作らない。
+- 2026-09-16 claude.ai 側の停止・時刻変更は Routines API 経由で Claude が実行できる（USER GATE：本人の明示指示が要る。削除は行わない）。
