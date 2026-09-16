@@ -9,7 +9,7 @@ AIチャットボット + FAX / Mail / VoIP / SNS / LINE ｜ ローカルデー�
 
 ## 0. 結論（先出し）
 
-1. **odoo.sh は使わない。** odoo.sh は Odoo SA が Google Cloud Platform 上で運用するマネージドホスティングで、リージョンは自動割当（東京なし、最寄りはシンガポール）。GAFAM 排除・国内データ主権の方針と正面から矛盾する。**Odoo 19 Enterprise をオンプレ（VLAN 30）または国内事業者の VPS に自社ホスト**し、PostgreSQL も同居させる。ライセンス費は同じ Enterprise 契約で賄える（ホスティング費のみ自前）。
+1. **odoo.sh は使わない。** odoo.sh は Odoo SA が運用するマネージドホスティングで、基盤は Google Cloud Platform（Odoo 公式セキュリティページでは OVHcloud と Google Cloud の併用と記載。構成比は Odoo SA が決め、顧客はプロバイダを選べない）。リージョンは Odoo SA が割当（東京リージョンの有無は二次情報が相互矛盾、**未確認**）。GAFAM 基盤を含む時点で、GAFAM 排除・国内データ主権の方針と矛盾する。**Odoo 19 Enterprise をオンプレ（VLAN 30）または国内事業者の VPS に自社ホスト**し、PostgreSQL も同居させる。ライセンス費は同じ Enterprise 契約で賄える（ホスティング費のみ自前）。
 2. **通信の中心は Odoo ではなく Chatwoot（MIT）。** Odoo は顧客・案件・請求の「真実の源泉」、Chatwoot は全チャネル受信箱、Asterisk が音声、agent-zero + Ollama がAI応対。すべて REST で疎結合。
 3. **AIは L4 ローカル推論のみが顧客対話に触れる。** 通話・チャット・FAX の内容は外部 LLM に送らない（通信の秘密＋APPI＋自社方針の三重理由）。Claude はプロンプト設計・コード生成・L0 資料作成の L1 支援に限定。
 4. **自己利用の範囲に留める限り電気通信事業の届出は不要。** 顧客企業の通信を取り次ぐ外販に踏み出す時点で第三号事業の建付けが必須。本計画は自己利用（段階A）に限定する。
