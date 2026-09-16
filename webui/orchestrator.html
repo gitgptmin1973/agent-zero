@@ -664,7 +664,7 @@ const DEFAULTS = {
   conc:2, step:10,
   cost:{pin:"", pout:"", fx:"", tl:8000, tm:30000, th:120000},
   filters:{freq:"all", tier:"all", flag:"all"}, q:"",
-  env:{mode:"docker", repo:"C:\\agent-zero", host:"127.0.0.1", port:"50080", branch:"claude/task-automation-dashboard-gvoy32"},
+  env:{mode:"n8n", repo:"C:\\agent-zero", host:"127.0.0.1", port:"50001", branch:"claude/task-automation-dashboard-gvoy32"},
   sort:{key:"time", dir:1}, exportKind:"tasks"
 };
 let state = structuredClone(DEFAULTS);
@@ -1260,6 +1260,8 @@ const EXPORTS = [
    hintJa:"OS cron を併用する場合の参考。agent-zero 内蔵スケジューラのみなら不要", hintEn:"reference for OS cron; not needed if you use the built-in scheduler"},
   {k:"py", ja:"移行スクリプト (Python)", en:"migration script (Python)",
    hintJa:"API 経由で1本ずつ作成。認証情報は環境変数から読む", hintEn:"creates tasks one by one via the API; credentials come from env vars"},
+  {k:"n8n", ja:"n8n ワークフロー", en:"n8n workflows",
+   hintJa:"Schedule Trigger + Ollama 呼び出し。取り込み後は全て停止状態、1本試してから有効化", hintEn:"Schedule Trigger plus an Ollama call; everything imports inactive — try one before activating"},
   {k:"snap", ja:"台帳スナップショット", en:"ledger snapshot",
    hintJa:"この台帳の状態。監査証跡・再取り込み用", hintEn:"state of this ledger, for audit trail and re-import"}
 ];
@@ -1274,6 +1276,39 @@ function buildExport(kind){
       created_at: now, updated_at: now, last_run: null, last_result: null,
       context_id: null, type: "scheduled", schedule: schedOf(t)
     }))}, null, 2);
+  }
+  if(kind==="n8n"){
+    // Shape verified against n8n source: node type "n8n-nodes-base.scheduleTrigger",
+    // versions [1, 1.1, 1.2, 1.3, 1.4], parameters.rule.interval[].field="cronExpression"
+    // with the cron string in .expression.
+    const wf = rows.map((t, i) => {
+      const local = t.tier==="L1" || t.tier==="L2";
+      const second = local ? {
+        parameters:{ method:"POST", url:"http://127.0.0.1:11434/api/generate",
+          sendBody:true, specifyBody:"json",
+          jsonBody: JSON.stringify({model:"PUT-YOUR-OLLAMA-MODEL-HERE", prompt: promptFor(t), stream:false}, null, 1),
+          options:{} },
+        id: uuidOf(t.id+":run"), name:"Ollama", type:"n8n-nodes-base.httpRequest",
+        typeVersion:4.2, position:[260, 0]
+      } : {
+        parameters:{}, id: uuidOf(t.id+":run"),
+        name: t.tier==="L4" ? "要Desktop代替 — ここに処理を接続" : "要クラウド推論 — ここに処理を接続",
+        type:"n8n-nodes-base.noOp", typeVersion:1, position:[260, 0]
+      };
+      return {
+        name: "MinoPRO " + String(i+1).padStart(2,"0") + " " + t.ja,
+        nodes: [{
+          parameters:{ rule:{ interval:[{ field:"cronExpression", expression: cronOf(t) }] } },
+          id: uuidOf(t.id+":cron"), name:"Schedule", type:"n8n-nodes-base.scheduleTrigger",
+          typeVersion:1.2, position:[0, 0]
+        }, second],
+        connections: { "Schedule": { main: [[{ node: second.name, type:"main", index:0 }]] } },
+        settings: { timezone:"Asia/Tokyo", executionOrder:"v1" },
+        active: false,
+        tags: [{name:"MinoPRO"}, {name:t.tier}, {name: t.conf ? "time-measured" : "time-proposed"}]
+      };
+    });
+    return JSON.stringify(wf, null, 2);
   }
   if(kind==="cron"){
     const head = ["# MinoPRO orchestration — cron reference (Asia/Tokyo)",
@@ -1616,7 +1651,7 @@ if (-not $listen) {
   Start-Process $url
 }`},
 
- {id:"rb3", m:"both", ord:5, gate:false,
+ {id:"rb3", m:"local", ord:5, gate:false,
   tJa:"3. 投入前プリフライト", tEn:"3. Preflight the export",
   wJa:"読むだけ。移行タブでコピーした tasks.json を保存したファイルを検査する。1件でも問題があれば止まる。",
   wEn:"Read-only. Checks the tasks.json you copied from the Migration tab and saved. Stops if anything fails.",
@@ -1646,7 +1681,7 @@ if ($raw.Length -gt 0 -and [int]$raw[0] -eq 65279) { $errs.Add('先頭に BOM �
 if ($errs.Count) { $errs | ForEach-Object { "NG  " + $_ }; throw ("" + $errs.Count + " 件。投入しないこと。") }
 "OK  " + $data.tasks.Count + " 件、検査通過"`},
 
- {id:"rb4", m:"both", ord:6, gate:true,
+ {id:"rb4", m:"local", ord:6, gate:true,
   tJa:"4. バックアップしてから投入", tEn:"4. Back up, then apply",
   wJa:"既存の tmp/scheduler/tasks.json を退避してから置き換える。BOM を付けずに書く（read_file は utf-8 固定・BOM を剥がさない / files.py:85-95）。",
   wEn:"Moves the existing tmp/scheduler/tasks.json aside, then replaces it. Written without a BOM — read_file opens with plain utf-8 and does not strip one (files.py:85-95).",
@@ -1674,7 +1709,7 @@ $check.tasks | Select-Object name,
   @{n='cron';e={ "" + $_.schedule.minute + " " + $_.schedule.hour + " * * " + $_.schedule.weekday }} |
   Format-Table -AutoSize`},
 
- {id:"rb5", m:"both", ord:7, gate:true,
+ {id:"rb5", m:"local", ord:7, gate:true,
   tJa:"5. 直前の状態へ戻す", tEn:"5. Roll back",
   wJa:"最新のバックアップで tasks.json を上書きする。ブロック4を実行した直後にしか意味がない。",
   wEn:"Overwrites tasks.json from the newest backup. Only meaningful right after block 4.",
@@ -1731,71 +1766,80 @@ Register-ScheduledTask -TaskName 'agent-zero health probe' -Action $hAction -Tri
   wEn:"Out of PowerShell's reach. For each row whose parallel run stopped showing a diff, open the scheduled task on claude.ai and disable it. Do not delete — deletion cannot be undone.",
   code:null},
 
- {id:"rb0d", m:"docker", ord:1, gate:true,
-  tJa:"0b. Docker Desktop を入れる", tEn:"0b. Install Docker Desktop",
-  wJa:"ソフトを追加する。管理者権限・数GBの空き・初回は再起動が要る。企業利用のライセンス条件（従業員数・売上規模）は Docker 社の規約で要確認。",
-  wEn:"Installs software. Needs admin rights, several GB free and usually one reboot. Check Docker's own subscription terms for company use.",
-  code:String.raw`# 管理者として開いたターミナルで実行する
-winget install -e --id Docker.DockerDesktop
-# 入ったら Docker Desktop を一度起動し、鯨アイコンが "Running" になるまで待つ
-docker version`},
+ {id:"rb0p", m:"local", ord:1, gate:true,
+  tJa:"0b. Python 3.12 を隔離して入れる", tEn:"0b. Install Python 3.12 in isolation",
+  wJa:"システムの Python 3.14 はそのまま残る。py ランチャーが複数版を並存させ、依存は .venv フォルダの中だけに入る。捨てたいときは .venv を消すだけ。",
+  wEn:"Leaves system Python 3.14 alone. The py launcher keeps versions side by side and every dependency lands inside the .venv folder. To undo, delete .venv.",
+  code:String.raw`winget install -e --id Python.Python.3.12
+py -0p                                   # 並存している版の一覧。3.14 は消えない
+Set-Location '@@REPO@@'
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe --version`},
 
- {id:"rb1d", m:"docker", ord:3, gate:false,
-  tJa:"1b. イメージを取得する", tEn:"1b. Pull the image",
-  wJa:"公式イメージを落とすだけ。数GBある。回線しだいで数分かかる。",
-  wEn:"Only downloads the official image. It is several GB and can take a few minutes.",
-  code:String.raw`docker pull frdel/agent-zero-run
-docker images frdel/agent-zero-run`},
-
- {id:"rb2d", m:"docker", ord:4, gate:true,
-  tJa:"2. コンテナを起動して開く", tEn:"2. Start the container, then open",
-  wJa:"コンテナを作って常駐させ、実測したポートで司令塔を開く。クローンを /a0 にマウントするので、この画面もコンテナから配信される。初回起動は準備処理で数分かかる。",
-  wEn:"Creates the container, keeps it running, and opens the deck on the port it actually mapped. The clone is mounted at /a0, so this page is served from the container. The first boot takes a few minutes.",
-  code:String.raw`$Repo = '@@REPO@@'
-$Port = '@@PORT@@'          # ホスト側のポート。コンテナ内は 80 固定（run_A0.sh）
-$Map  = $Port + ':80'
-$Mnt  = $Repo + ':/a0'
-
-if (docker ps -q --filter name=agent-zero) {
-  'already running'
-} elseif (docker ps -aq --filter name=agent-zero) {
-  docker start agent-zero
-} else {
-  docker run -d --name agent-zero --restart unless-stopped -p $Map -v $Mnt frdel/agent-zero-run
-}
-docker ps --filter name=agent-zero --format 'NAME={{.Names}}  STATUS={{.Status}}  PORTS={{.Ports}}'
-
-$url = 'http://@@HOST@@:' + $Port + '/orchestrator.html'
-foreach ($i in 1..30) {
-  Start-Sleep -Seconds 10
+ {id:"rb0n", m:"n8n", ord:1, gate:false,
+  tJa:"0b. 基盤3点の到達確認", tEn:"0b. Reach the three services",
+  wJa:"読むだけ。n8n・PostgreSQL・Ollama が応答するかを見る。ポートは既定値を仮に置いてあるので、違う場合は上の欄ではなくこの行を直す。",
+  wEn:"Read-only. Checks whether n8n, PostgreSQL and Ollama answer. The ports below are placeholders — edit the line, not the field above, if yours differ.",
+  code:String.raw`foreach ($svc in @(
+    @{n='n8n';        u='http://127.0.0.1:5678/healthz'},
+    @{n='Ollama';     u='http://127.0.0.1:11434/api/tags'}
+  )) {
   try {
-    $r = Invoke-WebRequest -Uri $url -TimeoutSec 5 -UseBasicParsing
-    'HTTP ' + $r.StatusCode + ' — 準備できた'
-    break
+    $r = Invoke-WebRequest -Uri $svc.u -TimeoutSec 5 -UseBasicParsing
+    "{0,-10} HTTP {1}" -f $svc.n, $r.StatusCode
   } catch {
-    $sc = $null
-    if ($_.Exception.Response) { $sc = [int]$_.Exception.Response.StatusCode }
-    if ($sc -eq 401 -or $sc -eq 403) { 'HTTP ' + $sc + ' — 起動済み（認証が返っている）'; break }
-    '待機中 ' + ($i * 10) + '秒 … docker logs agent-zero --tail 30 で進行を見られる'
+    $c = $null; if ($_.Exception.Response) { $c = [int]$_.Exception.Response.StatusCode }
+    if ($c) { "{0,-10} HTTP {1}" -f $svc.n, $c } else { "{0,-10} 応答なし" -f $svc.n }
   }
 }
-Start-Process $url`},
+$pg = Get-NetTCPConnection -State Listen -LocalPort 5432 -ErrorAction SilentlyContinue
+if ($pg) { 'PostgreSQL 5432 で待受中' } else { 'PostgreSQL 5432 は待受なし（ポート違いなら読み替える）' }`},
 
- {id:"rb6d", m:"docker", ord:8, gate:true,
-  tJa:"6. 落ちても戻す（Docker）", tEn:"6. Bring it back when it falls over (Docker)",
-  wJa:"常駐そのものは起動時の --restart unless-stopped が担う。ここでは応答が無いときだけ再起動する見張りを15分おきに登録する。タスク登録には管理者権限が要る。",
-  wEn:"Staying up is already handled by --restart unless-stopped at run time. This registers a watcher that restarts the container only when it stops answering, every 15 minutes. Registering the task needs admin rights.",
-  code:String.raw`$Port  = '@@PORT@@'
-$Probe = 'try { Invoke-WebRequest -Uri http://127.0.0.1:' + $Port + '/ -TimeoutSec 8 -UseBasicParsing | Out-Null } catch { $c=$null; if ($_.Exception.Response) { $c=[int]$_.Exception.Response.StatusCode }; if ($c -ne 401 -and $c -ne 403) { docker restart agent-zero } }'
+ {id:"rb1n", m:"n8n", ord:3, gate:false,
+  tJa:"1b. 使えるモデルを一覧する", tEn:"1b. List the models you actually have",
+  wJa:"読むだけ。Ollama に入っているモデル名をそのまま取り出す。モデル名は版ごとに変わるので、ここで見えた名前を次のワークフローに入れる（こちらで決め打ちしない）。",
+  wEn:"Read-only. Lists the model names Ollama actually holds. Tags change between releases, so copy what you see here into the workflow rather than trusting a hard-coded name.",
+  code:String.raw`$tags = Invoke-RestMethod -Uri 'http://127.0.0.1:11434/api/tags' -TimeoutSec 10
+$tags.models | Select-Object name, size, @{n='modified';e={$_.modified_at}} | Format-Table -AutoSize
+'--- 未導入なら例: ollama pull qwen3  （タグは ollama.com/library で実測してから）'`},
 
-$act = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -WindowStyle Hidden -Command "' + $Probe.Replace('"','\"') + '"')
-$trg = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 15)
-Register-ScheduledTask -TaskName 'agent-zero-health' -Action $act -Trigger $trg -Description 'restart agent-zero when it stops answering' -Force
-Get-ScheduledTask -TaskName 'agent-zero-health' | Select-Object TaskName, State`}
+ {id:"rb2n", m:"n8n", ord:4, gate:false,
+  tJa:"2. 司令塔を開く", tEn:"2. Open the deck",
+  wJa:"読むだけ。n8n 構成では agent-zero を起動しないので、司令塔はファイルのまま開く。ライブ連携は使わず、台帳・編成・エクスポートだけを使う。",
+  wEn:"Read-only. In the n8n setup nothing needs agent-zero running, so the deck opens straight from the file. The live link stays off; you use the ledger, the waves and the exports.",
+  code:String.raw`$deck = Join-Path '@@REPO@@' 'webui\orchestrator.html'
+if (Test-Path $deck) { Start-Process $deck } else { "見つからない: " + $deck + "  → ブロック1を先に実行する" }`},
+
+ {id:"rb3n", m:"n8n", ord:5, gate:true,
+  tJa:"3. ワークフローを取り込む", tEn:"3. Import the workflows",
+  wJa:"移行タブの「n8n ワークフロー」をファイルに保存してから取り込む。取り込み直後はすべて停止状態なので、1本だけ手動実行して確かめてから有効化する。",
+  wEn:"Save the Migration tab's n8n export to a file first. Everything imports inactive — run one by hand, check it, then activate.",
+  code:String.raw`$Src = "$env:USERPROFILE\Downloads\minopro-n8n.json"
+$raw = Get-Content -Raw -Path $Src
+try { $wf = $raw | ConvertFrom-Json } catch { throw "JSON として読めない: " + $_.Exception.Message }
+"ワークフロー " + $wf.Count + " 本"
+$wf | ForEach-Object { " - " + $_.name + "   " + $_.nodes[0].parameters.rule.interval[0].expression }
+
+# 取り込み（n8n の CLI が PATH にある前提。無ければ n8n 画面の Import from File でも同じ）
+n8n import:workflow --input="$Src"
+# 取り込み後: n8n の画面で1本だけ手動実行 → 結果を確認 → Active に切り替える`},
+
+ {id:"rb6n", m:"n8n", ord:8, gate:false,
+  tJa:"6. 動いているかを見る", tEn:"6. See whether it is still running",
+  wJa:"読むだけ。n8n が応答するかと、Ollama が生きているかを見る。止まっていた場合の再起動方法は n8n の入れ方（サービス／PM2／手動）で変わるため、ここでは判定だけを出す。",
+  wEn:"Read-only. Checks that n8n and Ollama still answer. How to restart depends on how n8n was installed (service, PM2 or by hand), so this only reports.",
+  code:String.raw`$ok = $true
+foreach ($u in 'http://127.0.0.1:5678/healthz','http://127.0.0.1:11434/api/tags') {
+  try { Invoke-WebRequest -Uri $u -TimeoutSec 5 -UseBasicParsing | Out-Null; "OK  " + $u }
+  catch { $ok = $false; "NG  " + $u }
+}
+if (-not $ok) { '落ちている。n8n / Ollama の起動方法に合わせて再起動すること（サービスなら Restart-Service、PM2 なら pm2 restart）' }`}
 ];
 const MODES = {
-  docker:{ja:"Docker", en:"Docker"},
-  local:{ja:"ローカル実行", en:"Local Python"}
+  n8n:{ja:"n8n ＋ Ollama（Docker不使用）", en:"n8n + Ollama (no Docker)"},
+  local:{ja:"agent-zero（隔離venv）", en:"agent-zero (isolated venv)"}
 };
 function renderModePanel(){
   const en = currentLang==="en";
@@ -1803,14 +1847,13 @@ function renderModePanel(){
     `<button class="chip" data-mode="${k}" aria-pressed="${state.env.mode===k}">${MODES[k][currentLang]}</button>`).join("");
   $("#modePicker").querySelectorAll(".chip").forEach(c => c.onclick = () => {
     state.env.mode = c.dataset.mode;
-    if(state.env.port==="50001" && c.dataset.mode==="docker") state.env.port = "50080";
     save(); renderRunbook(); $("#envPort").value = state.env.port;
   });
-  $("#modeNote").innerHTML = state.env.mode==="docker" ? `<div class="note info">
-    <span class="ja"><b>Docker の実測:</b> コンテナ内の Web UI は <code class="mono">--port=80</code> 固定で起動する（<code class="mono">docker/run/fs/exe/run_A0.sh</code>）。ホスト側のポートは <code class="mono">-p</code> のマッピングだけで決まり、<code class="mono">.env</code> の <code class="mono">WEB_UI_PORT</code> は効かない。クローンを <code class="mono">/a0</code> にマウントすれば既存ファイルは上書きされず（<code class="mono">copy_A0.sh</code> は <code class="mono">cp -rn</code>）、この司令塔もそのまま配信される。ブロック3〜5が触るパスはホスト側フォルダ＝コンテナの <code class="mono">/a0</code> なので共通。</span>
-    <span class="en"><b>Measured Docker behaviour:</b> inside the container the web UI starts with a fixed <code class="mono">--port=80</code> (<code class="mono">docker/run/fs/exe/run_A0.sh</code>). The host port comes only from the <code class="mono">-p</code> mapping — <code class="mono">WEB_UI_PORT</code> in <code class="mono">.env</code> has no effect. Mounting the clone at <code class="mono">/a0</code> keeps your files (<code class="mono">copy_A0.sh</code> uses <code class="mono">cp -rn</code>) and serves this deck from the container. Blocks 3–5 touch the same host folder, which is the container's <code class="mono">/a0</code>.</span></div>` : `<div class="note">
-    <span class="ja"><b>ローカル実行の注意:</b> リポジトリの手順書は <b>Python 3.12</b> 前提（<code class="mono">docs/installation.md:432</code>）。<code class="mono">requirements.txt</code> は faiss-cpu 1.11.0・sentence-transformers 3.0.1・openai-whisper など固定版を含むため、新しすぎる Python ではビルド済みパッケージが無く失敗しうる。ポートは <code class="mono">--port</code> → <code class="mono">.env</code> の <code class="mono">WEB_UI_PORT</code> の順で解決される（<code class="mono">runtime.py:132</code>）ので、ブロック2が実機を読んで実測値で URL を作る。</span>
-    <span class="en"><b>Local-run caveat:</b> the repository's own guide assumes <b>Python 3.12</b> (<code class="mono">docs/installation.md:432</code>). <code class="mono">requirements.txt</code> pins faiss-cpu 1.11.0, sentence-transformers 3.0.1, openai-whisper and others, so a much newer Python may have no prebuilt wheels and fail to install. The port resolves from <code class="mono">--port</code>, then <code class="mono">WEB_UI_PORT</code> in <code class="mono">.env</code> (<code class="mono">runtime.py:132</code>), which is what block 2 reads.</span></div>`;
+  $("#modeNote").innerHTML = state.env.mode==="n8n" ? `<div class="note info">
+    <span class="ja"><b>n8n が予定表を持つ構成。</b> 19本のスケジュールは n8n の Schedule Trigger（<code class="mono">n8n-nodes-base.scheduleTrigger</code>・cron 5フィールド）に載せ、推論は Ollama に投げる。agent-zero も Docker も不要で、システムの Python 3.14 に一切触らない。司令塔はこの構成では台帳・編成・エクスポート専用として使う（ライブ連携は agent-zero 用）。</span>
+    <span class="en"><b>n8n owns the schedule.</b> The 19 jobs ride n8n's Schedule Trigger (<code class="mono">n8n-nodes-base.scheduleTrigger</code>, 5-field cron) and inference goes to Ollama. No agent-zero, no Docker, and system Python 3.14 stays untouched. Here the deck is the ledger, the wave planner and the exporter; the live link belongs to the agent-zero setup.</span></div>` : `<div class="note">
+    <span class="ja"><b>agent-zero を使う場合だけ Python 3.12 が要る。</b> <code class="mono">requirements.txt</code> が faiss-cpu 1.11.0・sentence-transformers 3.0.1・openai-whisper などを固定しており、手順書も 3.12 前提（<code class="mono">docs/installation.md:432</code>）。<b>システムの 3.14 は残したまま</b>、<code class="mono">py -3.12 -m venv .venv</code> でこのフォルダの中だけに閉じ込める。捨てるときは <code class="mono">.venv</code> を削除するだけで、他の Python 環境に影響しない。</span>
+    <span class="en"><b>Python 3.12 is only needed if you run agent-zero.</b> <code class="mono">requirements.txt</code> pins faiss-cpu 1.11.0, sentence-transformers 3.0.1 and openai-whisper, and the guide assumes 3.12 (<code class="mono">docs/installation.md:432</code>). <b>Keep system 3.14</b> and confine it with <code class="mono">py -3.12 -m venv .venv</code>; deleting <code class="mono">.venv</code> undoes everything and touches no other environment.</span></div>`;
 }
 function renderRunbook(){
   const en = currentLang==="en";
