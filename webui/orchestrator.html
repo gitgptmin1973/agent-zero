@@ -246,8 +246,8 @@ footer{max-width:1220px;margin:0 auto;padding:22px 16px 40px;color:var(--ink3);f
   <div class="sec">
     <div class="sec-head">
       <h2><span class="ja">稼働概況</span><span class="en">Fleet status</span></h2>
-      <span class="hint ja">claude.ai スケジュール済みタスク 19 本の棚卸し結果。時刻が画面で確認できなかった 9 本は「未確認」として提案値で表示する。</span>
-      <span class="hint en">Inventory of 19 claude.ai scheduled tasks. The 9 whose fire time was not visible on screen are shown as proposals, flagged unconfirmed.</span>
+      <span class="hint ja">claude.ai の Routines API（list_triggers）から全 20 本を実測。cron は JST 換算値、実行時間は各 Routine の直近実行から算出。</span>
+      <span class="hint en">All 20 routines measured through the claude.ai Routines API (list_triggers): cron converted to JST, runtime taken from each routine own last run.</span>
     </div>
     <div class="grid kpis" id="kpis"></div>
   </div>
@@ -521,101 +521,106 @@ footer{max-width:1220px;margin:0 auto;padding:22px 16px 40px;color:var(--ink3);f
    conf:true  = fire time read directly from the claude.ai task list (measured)
    conf:false = time NOT visible on screen -> value below is a PROPOSAL      */
 const TASKS = [
- {id:"gz140", ja:"広交会140 視察情報 毎日巡回", en:"Canton Fair 140 daily sweep",
-  freq:"daily", h:1, m:0, conf:true, desktop:true, tier:"L4", wave:"W1", weight:"heavy",
+ {id:"gz140", ja:"広交会140 視察情報 毎日巡回（01:00 JST）／登録開放とビザ工程を監視", en:"Canton Fair 140 daily sweep",
+  freq:"daily", h:1, m:0, conf:true, mins:4, desktop:true, tier:"L4", wave:"W1", weight:"heavy",
   projJa:"新商品開発OEM", projEn:"New product / OEM", gates:["web","human"], deps:[],
-  dJa:"第140回 広交会（2026年10月・広州）の視察情報を毎日巡回しファクトチェックする。",
-  dEn:"Daily sweep and fact-check of intel for the 140th Canton Fair (Guangzhou, Oct 2026)."},
+  dJa:"第140回 広交会（2026年10月・広州）の視察情報を毎日巡回し、登録開放とビザ工程を監視する。",
+  dEn:"Daily sweep on the 140th Canton Fair, watching registration opening and the visa process."},
  {id:"kisei", ja:"規制対応レーダー 毎日AM2時巡回", en:"Regulatory radar 02:00 sweep",
-  freq:"daily", h:2, m:0, conf:true, desktop:true, tier:"L4", wave:"W1", weight:"medium",
+  freq:"daily", h:2, m:0, conf:true, mins:1, desktop:true, tier:"L4", wave:"W1", weight:"medium",
   projJa:"コンプライアンス", projEn:"Compliance", gates:["web"], deps:[],
-  dJa:"APPI/GDPR/EU AI Act ほか規制動向のコンプライアンス巡回。結論先出しで報告。",
+  dJa:"APPI/GDPR/EU AI Act ほか規制動向のコンプライアンス巡回。",
   dEn:"Compliance sweep over APPI / GDPR / EU AI Act and related regulatory movement."},
+ {id:"cmdtower", ja:"統合司令塔ダッシュボード週次自動更新", en:"Command tower dashboard weekly",
+  freq:"weekly", dow:1, h:4, m:0, conf:true, mins:7, desktop:false, tier:"L1", wave:"W2", weight:"light",
+  projJa:"全社", projEn:"Company-wide", gates:[], deps:["saos","dgs3","board","memory","infra"],
+  dJa:"全PJの状態を束ねる司令塔ダッシュボードを週次更新する。",
+  dEn:"Weekly rollup of every project into the command-tower dashboard."},
  {id:"pdcc", ja:"Prohands daily command center", en:"Prohands daily command center",
-  freq:"daily", h:5, m:0, conf:true, desktop:true, tier:"L4", wave:"W2", weight:"heavy",
+  freq:"daily", h:5, m:0, conf:true, mins:3, desktop:true, tier:"L4", wave:"W2", weight:"heavy",
   projJa:"全社", projEn:"Company-wide", gates:["web"], deps:["gz140","kisei","newsify"],
   dJa:"CEO 向け毎朝の統合コマンドセンター。前日の全巡回結果を集約する上位ジョブ。",
   dEn:"Morning command center for the CEO; aggregates every overnight sweep."},
- {id:"biztown", ja:"ビジネスタウン・ダッシュボード毎朝自動更新", en:"Business-town dashboard refresh",
-  freq:"daily", h:5, m:0, conf:true, desktop:false, tier:"L3", wave:"W2", weight:"heavy",
+ {id:"biztown", ja:"ビジネスタウン・ダッシュボード毎朝自動更新（Deep Research＋ファクトチェック）", en:"Business-town dashboard refresh",
+  freq:"daily", h:5, m:0, conf:true, mins:13, desktop:false, tier:"L3", wave:"W2", weight:"heavy",
   projJa:"odoo マルチプラットフォーム", projEn:"Odoo multi-platform", gates:["web"], deps:["kisei","oss-cn","yakushin"],
-  dJa:"Deep Research でビジネスタウン構想のダッシュボードを毎朝更新する。",
+  dJa:"Deep Research とファクトチェックでビジネスタウン構想のダッシュボードを毎朝更新する。",
   dEn:"Deep-Research refresh of the business-town platform dashboard each morning."},
+ {id:"saos", ja:"SAOS 100点到達ダッシュボード 週次巡回（月曜05:30 JST）", en:"SAOS 100-point dashboard",
+  freq:"weekly", dow:1, h:5, m:30, conf:true, mins:null, desktop:false, tier:"L2", wave:"W1", weight:"medium",
+  projJa:"SAOS", projEn:"SAOS", gates:["web"], deps:[],
+  dJa:"主権エージェントOS の到達度スコアを週次で更新する。",
+  dEn:"Weekly scoring update for the sovereign agent OS roadmap."},
  {id:"newsify", ja:"Newsify daily scan", en:"Newsify daily scan",
-  freq:"daily", h:5, m:30, conf:true, desktop:false, tier:"L2", wave:"W1", weight:"medium",
+  freq:"daily", h:5, m:30, conf:true, mins:2, desktop:false, tier:"L2", wave:"W1", weight:"medium",
   projJa:"AI ニュース", projEn:"AI news", gates:["web"], deps:[],
   dJa:"newsify.tv を巡回し AI 最前線ニュースを自動収集する。",
   dEn:"Crawls newsify.tv and collects frontier AI news."},
  {id:"morning", ja:"モーニングブリーフ", en:"Morning brief",
-  freq:"weekday", h:6, m:30, conf:true, desktop:false, tier:"L3", wave:"W3", weight:"medium",
+  freq:"weekday", h:6, m:30, conf:true, mins:6, desktop:false, tier:"L3", wave:"W3", weight:"medium",
   projJa:"経営", projEn:"Executive", gates:["web","pii"], deps:["newsify","kisei","pdcc","biztown"],
-  dJa:"平日朝のモーニングブリーフをデータサイエンス視点で日本語生成する。",
-  dEn:"Weekday morning brief, written in Japanese from a data-science angle."},
- {id:"kanko-daily", ja:"観光PJ 毎日自動巡回", en:"Tourism PJ daily sweep",
-  freq:"daily", h:6, m:40, conf:true, desktop:false, tier:"L3", wave:"W1", weight:"heavy",
+  dJa:"平日朝のモーニングブリーフ（/morning）。",
+  dEn:"Weekday morning brief (/morning)."},
+ {id:"kanko-daily", ja:"観光PJ 毎日自動巡回（Deep Research＋EVOLVE-100自己診断）", en:"Tourism PJ daily sweep",
+  freq:"daily", h:6, m:40, conf:true, mins:19, desktop:false, tier:"L3", wave:"W1", weight:"heavy",
   projJa:"観光ビジネス統合PJ", projEn:"Tourism product PJ", gates:["web"], deps:[],
-  dJa:"MNRKW-PJ-2026-031 の Deep Research 巡回と KANKO-STATE 更新。",
-  dEn:"Deep-Research sweep for MNRKW-PJ-2026-031 and KANKO-STATE update."},
- {id:"oss-cn", ja:"中国系OSS AI＋輸出規制 月次ウォッチ", en:"China OSS AI + export-control watch",
-  freq:"daily", h:6, m:40, conf:true, desktop:false, tier:"L2", wave:"W1", weight:"medium",
-  projJa:"Auto Skill Forge", projEn:"Auto Skill Forge", gates:["web"], deps:[],
-  dJa:"中国系 OSS AI と輸出規制の自律監視。名称は月次だが起動は毎日設定。",
-  dEn:"Autonomous watch on Chinese OSS AI and export controls. Named monthly, fires daily."},
- {id:"yakushin", ja:"躍進 第14回 告示・見積 ウォッチ", en:"Yakushin round 14 notice watch",
-  freq:"daily", h:7, m:30, conf:true, desktop:false, tier:"L3", wave:"W1", weight:"medium",
-  projJa:"起業創業助成金Getter", projEn:"Subsidy getter", gates:["web","human"], deps:[],
-  dJa:"設備投資支援事業 第14回（令和8年度第3回）の告示・見積要件を監視する。",
-  dEn:"Watches the notice and quotation requirements for capex-subsidy round 14."},
- {id:"selfheal", ja:"Self heal weekly maintenance", en:"Self-heal weekly maintenance",
-  freq:"weekly", dow:0, h:3, m:0, conf:false, desktop:false, tier:"L1", wave:"W0", weight:"light",
-  projJa:"基盤保全", projEn:"Platform upkeep", gates:["sys","del"], deps:[],
-  dJa:"基盤の自己修復メンテナンス。破壊的操作を含みうるため削除系ゲート対象。",
-  dEn:"Self-healing maintenance pass. Can touch destructive operations, so it is gated."},
- {id:"board", ja:"基板巡回 Odoo19/n8n/PG EOL", en:"Stack sweep: Odoo19 / n8n / PG EOL",
-  freq:"weekly", dow:1, h:3, m:20, conf:false, desktop:false, tier:"L2", wave:"W1", weight:"medium",
-  projJa:"基盤", projEn:"Platform", gates:["web","sys"], deps:[],
-  dJa:"Odoo 19・n8n・PostgreSQL の EOL とアップデート情報を週次巡回する。",
-  dEn:"Weekly sweep of Odoo 19, n8n and PostgreSQL EOL / update information."},
+  dJa:"MNRKW-PJ-2026-031 の Deep Research 巡回と EVOLVE-100 自己診断。",
+  dEn:"Deep-Research sweep for MNRKW-PJ-2026-031 plus the EVOLVE-100 self-check."},
  {id:"infra", ja:"統合インフラ 週次自律巡回", en:"Infrastructure weekly self-audit",
-  freq:"weekly", dow:2, h:3, m:40, conf:false, desktop:false, tier:"L1", wave:"W0", weight:"medium",
+  freq:"weekly", dow:1, h:7, m:30, conf:true, mins:null, desktop:false, tier:"L1", wave:"W0", weight:"medium",
   projJa:"インフラ", projEn:"Infrastructure", gates:["sys"], deps:[],
   dJa:"統合インフラの自律巡回。ネットワーク・ホスト・サービスの健全性確認。",
   dEn:"Autonomous infrastructure sweep across network, hosts and services."},
- {id:"saos", ja:"SAOS 100点到達ダッシュボード", en:"SAOS 100-point dashboard",
-  freq:"weekly", dow:3, h:4, m:0, conf:false, desktop:false, tier:"L2", wave:"W1", weight:"medium",
-  projJa:"SAOS", projEn:"SAOS", gates:["web"], deps:[],
-  dJa:"主権エージェントOS の到達度スコアを週次で更新する。",
-  dEn:"Weekly scoring update for the sovereign agent OS roadmap."},
- {id:"dgs3", ja:"3DGSカオスマップ 週次Deep Research", en:"3DGS chaos map weekly research",
-  freq:"weekly", dow:4, h:4, m:20, conf:false, desktop:false, tier:"L3", wave:"W1", weight:"heavy",
-  projJa:"3DGS / 測量", projEn:"3DGS / survey", gates:["web"], deps:[],
-  dJa:"3D Gaussian Splatting 関連プレイヤーのカオスマップを週次で更新する。",
-  dEn:"Weekly refresh of the 3D Gaussian Splatting vendor chaos map."},
- {id:"memory", ja:"MinoPRO統合メモリ 週次自動棚卸", en:"Unified memory weekly audit",
-  freq:"weekly", dow:5, h:4, m:40, conf:false, desktop:false, tier:"L1", wave:"W2", weight:"light",
-  projJa:"記憶基盤", projEn:"Memory layer", gates:["del","pii"], deps:[],
-  dJa:"統合メモリの棚卸し。上書き主義のため削除系ゲート対象。",
-  dEn:"Audit of the unified memory store. Overwrite-first, so delete-gated."},
- {id:"claude-dash", ja:"Claude統合ダッシュボード 週次自動更新", en:"Claude usage dashboard weekly",
-  freq:"weekly", dow:6, h:5, m:0, conf:false, desktop:false, tier:"L2", wave:"W2", weight:"light",
+ {id:"claude-dash", ja:"Claude統合ダッシュボード 週次自律更新", en:"Claude usage dashboard weekly",
+  freq:"weekly", dow:1, h:7, m:30, conf:true, mins:12, desktop:false, tier:"L2", wave:"W2", weight:"light",
   projJa:"AI 運用", projEn:"AI ops", gates:["web"], deps:[],
   dJa:"Claude 活用状況の統合ダッシュボードを週次更新する。",
   dEn:"Weekly refresh of the Claude-usage dashboard."},
- {id:"cmdtower", ja:"統合司令塔ダッシュボード 週次自動更新", en:"Command tower dashboard weekly",
-  freq:"weekly", dow:6, h:5, m:30, conf:false, desktop:false, tier:"L1", wave:"W2", weight:"light",
-  projJa:"全社", projEn:"Company-wide", gates:[], deps:["saos","dgs3","board","memory","infra"],
-  dJa:"全 PJ の状態を束ねる司令塔ダッシュボードを週次更新する。",
-  dEn:"Weekly rollup of every project into the command-tower dashboard."},
- {id:"kanko-audit", ja:"観光PJ 週次自己監査", en:"Tourism PJ weekly self-audit",
-  freq:"weekly", dow:0, h:6, m:0, conf:false, desktop:false, tier:"L2", wave:"W2", weight:"medium",
+ {id:"yakushin", ja:"躍進 第14回 告示・見積 ウォッチ（みのりかわPROHANDS）", en:"Yakushin round 14 notice watch",
+  freq:"daily", h:7, m:30, conf:true, mins:3, desktop:false, tier:"L3", wave:"W1", weight:"medium",
+  projJa:"起業創業助成金Getter", projEn:"Subsidy getter", gates:["web","human"], deps:[],
+  dJa:"設備投資支援事業 第14回の告示・見積要件を監視する。",
+  dEn:"Watches the notice and quotation requirements for capex-subsidy round 14."},
+ {id:"selfheal", ja:"Self heal weekly maintenance", en:"Self-heal weekly maintenance",
+  freq:"weekly", dow:1, h:8, m:0, conf:true, mins:1, desktop:false, tier:"L1", wave:"W0", weight:"light",
+  projJa:"基盤保全", projEn:"Platform upkeep", gates:["sys","del"], deps:[],
+  dJa:"基盤の自己修復メンテナンス。破壊的操作を含みうるため削除系ゲート対象。",
+  dEn:"Self-healing maintenance pass. Can touch destructive operations, so it is gated."},
+ {id:"memory", ja:"MinoPRO統合メモリ 週次自動棚卸", en:"Unified memory weekly audit",
+  freq:"weekly", dow:1, h:8, m:0, conf:true, mins:1, desktop:false, tier:"L1", wave:"W2", weight:"light",
+  projJa:"記憶基盤", projEn:"Memory layer", gates:["del","pii"], deps:[],
+  dJa:"統合メモリの棚卸し。上書き主義のため削除系ゲート対象。",
+  dEn:"Audit of the unified memory store. Overwrite-first, so delete-gated."},
+ {id:"dgs3", ja:"3DGSカオスマップ 週次Deep Research自動更新", en:"3DGS chaos map weekly research",
+  freq:"weekly", dow:1, h:8, m:0, conf:true, mins:27, desktop:false, tier:"L3", wave:"W1", weight:"heavy",
+  projJa:"3DGS / 測量", projEn:"3DGS / survey", gates:["web"], deps:[],
+  dJa:"3D Gaussian Splatting 関連プレイヤーのカオスマップを週次で更新する。",
+  dEn:"Weekly refresh of the 3D Gaussian Splatting vendor chaos map."},
+ {id:"board", ja:"基板巡回 Odoo19/n8n/PG EOL・CVE監視", en:"Stack sweep: Odoo19 / n8n / PG EOL + CVE",
+  freq:"weekly", dow:2, h:3, m:0, conf:true, mins:7, desktop:false, tier:"L2", wave:"W1", weight:"medium",
+  projJa:"基盤", projEn:"Platform", gates:["web","sys"], deps:[],
+  dJa:"Odoo 19・n8n・PostgreSQL の EOL と CVE を週次巡回する。",
+  dEn:"Weekly sweep of Odoo 19, n8n and PostgreSQL EOL and CVE notices."},
+ {id:"learn", ja:"週次 学習チェックイン（Claude活用）", en:"Weekly learning check-in",
+  freq:"weekly", dow:5, h:17, m:0, conf:true, mins:19, desktop:false, tier:"L2", wave:"W3", weight:"light",
+  projJa:"人材育成", projEn:"Enablement", gates:[], deps:["claude-dash"],
+  dJa:"毎週金曜 17:00 JST の Claude 活用 学習チェックイン。",
+  dEn:"Claude-usage learning check-in, Fridays 17:00 JST."},
+ {id:"weekly-report", ja:"Weekly report", en:"Weekly report",
+  freq:"weekly", dow:5, h:17, m:0, conf:true, mins:null, desktop:false, tier:"L2", wave:"W3", weight:"light",
+  projJa:"全社", projEn:"Company-wide", gates:[], deps:[],
+  dJa:"週次進捗レポート。実行記録がまだ無い（last_run 無し）。",
+  dEn:"Weekly progress report. No run has been recorded yet (no last_run)."},
+ {id:"kanko-audit", ja:"観光PJ 週次自己監査（KANKO-STATE）", en:"Tourism PJ weekly self-audit",
+  freq:"weekly", dow:6, h:19, m:0, conf:true, mins:12, desktop:false, tier:"L2", wave:"W2", weight:"medium",
   projJa:"観光ビジネス統合PJ", projEn:"Tourism product PJ", gates:["web"], deps:["kanko-daily"],
   dJa:"KANKO-STATE と成果物の整合を週次で自己監査する。",
   dEn:"Weekly self-audit of KANKO-STATE against delivered artefacts."},
- {id:"learn", ja:"週次 学習チェックイン（Claude活用）", en:"Weekly learning check-in",
-  freq:"weekly", dow:5, h:17, m:0, conf:true, desktop:false, tier:"L2", wave:"W3", weight:"light",
-  projJa:"人材育成", projEn:"Enablement", gates:[], deps:["claude-dash"],
-  dJa:"毎週金曜 17:00 JST の Claude 活用 学習チェックイン。",
-  dEn:"Claude-usage learning check-in, Fridays 17:00 JST."}
+ {id:"oss-cn", ja:"中国系OSS AI + 輸出規制 月次ウォッチ", en:"China OSS AI + export-control watch",
+  freq:"monthly", dom:2, h:6, m:40, conf:true, mins:4, desktop:false, tier:"L2", wave:"W1", weight:"medium",
+  projJa:"Auto Skill Forge", projEn:"Auto Skill Forge", gates:["web"], deps:[],
+  dJa:"中国系 OSS AI と輸出規制の自律監視。実測は毎月2日 06:40 JST の月次。",
+  dEn:"Autonomous watch on Chinese OSS AI and export controls — measured as monthly, day 2 at 06:40 JST."}
 ];
 
 /* ---------- 2. DICTIONARIES ---------- */
@@ -646,7 +651,7 @@ const GATES = {
 const WEIGHTS = {light:{min:3, ja:"軽量", en:"light"}, medium:{min:8, ja:"標準", en:"medium"}, heavy:{min:25, ja:"重量", en:"heavy"}};
 const DOW_JA = ["日","月","火","水","木","金","土"];
 const DOW_EN = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-const RUNS_PER_MONTH = {daily:30.4, weekday:21.7, weekly:4.33};
+const RUNS_PER_MONTH = {daily:30.4, weekday:21.7, weekly:4.33, monthly:1};
 const TABS = [
   {id:"command",   n:"01", ja:"司令塔",       en:"Command"},
   {id:"registry",  n:"02", ja:"タスク台帳",   en:"Registry"},
@@ -716,16 +721,22 @@ function whenStr(t){
   const d = currentLang==="en" ? DOW_EN : DOW_JA;
   if(t.freq==="daily")  return (currentLang==="en"?"daily ":"毎日 ")+timeStr(t);
   if(t.freq==="weekday")return (currentLang==="en"?"Mon–Fri ":"平日 ")+timeStr(t);
+  if(t.freq==="monthly")return (currentLang==="en"?`monthly day ${t.dom} `:`毎月${t.dom}日 `)+timeStr(t);
   return (currentLang==="en"? d[t.dow]+" " : d[t.dow]+"曜 ")+timeStr(t);
 }
+/** measured runtime in minutes when the Routines API reported one, else the class assumption */
+function runMin(t){ return (t.mins === null || t.mins === undefined) ? WEIGHTS[t.weight].min : t.mins; }
+function runMeasured(t){ return !(t.mins === null || t.mins === undefined); }
 function cronOf(t){
   if(t.freq==="daily")   return `${t.m} ${t.h} * * *`;
   if(t.freq==="weekday") return `${t.m} ${t.h} * * 1-5`;
+  if(t.freq==="monthly") return `${t.m} ${t.h} ${t.dom} * *`;
   return `${t.m} ${t.h} * * ${t.dow}`;
 }
 function schedOf(t){
-  return {minute:String(t.m), hour:String(t.h), day:"*", month:"*",
-          weekday: t.freq==="daily" ? "*" : t.freq==="weekday" ? "1-5" : String(t.dow),
+  return {minute:String(t.m), hour:String(t.h),
+          day: t.freq==="monthly" ? String(t.dom) : "*", month:"*",
+          weekday: (t.freq==="daily" || t.freq==="monthly") ? "*" : t.freq==="weekday" ? "1-5" : String(t.dow),
           timezone:"Asia/Tokyo"};
 }
 function runsPerMonth(t){ return RUNS_PER_MONTH[t.freq]; }
@@ -761,7 +772,7 @@ function setLang(l){
 function intervalsFor(dow){
   return activeTasks()
     .filter(t => t.freq==="daily" || (t.freq==="weekday" && dow>=1 && dow<=5) || (t.freq==="weekly" && t.dow===dow))
-    .map(t => ({t, s:minOfDay(t), e:minOfDay(t)+WEIGHTS[t.weight].min}))
+    .map(t => ({t, s:minOfDay(t), e:minOfDay(t)+runMin(t)}))
     .sort((a,b) => a.s-b.s);
 }
 /** groups whose concurrency exceeds the limit, across the whole week */
@@ -894,7 +905,7 @@ function renderHeat(){
     const h = t.h;
     if(t.freq==="daily") order.forEach(d => grid[d][h]++);
     else if(t.freq==="weekday") [1,2,3,4,5].forEach(d => grid[d][h]++);
-    else grid[t.dow][h]++;
+    else if(t.freq==="weekly") grid[t.dow][h]++;
   });
   const D = currentLang==="en" ? DOW_EN : DOW_JA;
   let s = `<div class="hd"></div>` + order.map(d => `<div class="hd">${D[d]}</div>`).join("");
@@ -945,7 +956,7 @@ function renderMix(){
 
 /* ---------- 8. RENDER: REGISTRY ---------- */
 const FILTERS = [
-  {k:"freq", opts:[["all",{ja:"全頻度",en:"All"}],["daily",{ja:"毎日",en:"Daily"}],["weekday",{ja:"平日",en:"Weekdays"}],["weekly",{ja:"週次",en:"Weekly"}]]},
+  {k:"freq", opts:[["all",{ja:"全頻度",en:"All"}],["daily",{ja:"毎日",en:"Daily"}],["weekday",{ja:"平日",en:"Weekdays"}],["weekly",{ja:"週次",en:"Weekly"}],["monthly",{ja:"月次",en:"Monthly"}]]},
   {k:"tier", opts:[["all",{ja:"全Tier",en:"All tiers"}],["L1",{ja:"L1",en:"L1"}],["L2",{ja:"L2",en:"L2"}],["L3",{ja:"L3",en:"L3"}],["L4",{ja:"L4",en:"L4"}]]},
   {k:"flag", opts:[["all",{ja:"全件",en:"Everything"}],["desktop",{ja:"Desktop依存",en:"Desktop-bound"}],["unconf",{ja:"時刻未確認",en:"Unconfirmed"}],["gated",{ja:"ゲート有",en:"Gated"}],["off",{ja:"無効",en:"Disabled"}]]}
 ];
@@ -1070,7 +1081,7 @@ function renderDrawer(){
         <dt>Tier</dt><dd><span class="badge tier ${tier.cls}">${t.tier}</span> ${tier[currentLang]}</dd>
         <dt>${currentLang==="en"?"Runner":"実行先"}</dt><dd>${RUNNERS[t.runner][currentLang]}</dd>
         <dt>${currentLang==="en"?"Wave":"ウェーブ"}</dt><dd>${WAVES[t.wave][currentLang]} <span style="color:var(--ink3);font-size:11px">${currentLang==="en"?WAVES[t.wave].codeEn:WAVES[t.wave].codeJa}</span></dd>
-        <dt>${currentLang==="en"?"Est. runtime":"想定実行時間"}</dt><dd class="mono">${WEIGHTS[t.weight].min} min <span class="badge">${currentLang==="en"?"assumed":"仮定"}</span></dd>
+        <dt>${currentLang==="en"?"Runtime":"実行時間"}</dt><dd class="mono">${runMin(t)} min ${runMeasured(t)?`<span class="badge ok">${currentLang==="en"?"measured":"実測"}</span>`:`<span class="badge warn">${currentLang==="en"?"assumed":"仮定"}</span>`}</dd>
         <dt>${currentLang==="en"?"Depends on":"依存"}</dt><dd>${t.deps.length ? t.deps.map(id => esc(currentLang==="en"?TASKS.find(z=>z.id===id).en:TASKS.find(z=>z.id===id).ja)).join("、") : "—"}</dd>
         <dt>${currentLang==="en"?"Gates":"ゲート"}</dt><dd>${t.gates.length ? t.gates.map(g=>GATES[g][currentLang]).join("、") : "—"}</dd>
       </dl>
@@ -1210,8 +1221,8 @@ function renderCollide(){
       <td>${g.items.map(t => `<span class="badge">${esc(clip(en?t.en:t.ja, 20))}</span>`).join(" ")}</td></tr>`).join("")
   }</tbody></table></div>
   <div style="font-size:11.5px;color:var(--ink3);margin-top:8px">${en
-    ? "Runtime per task is an assumption (light 3 min / medium 8 / heavy 25), not a measurement — replace it once you have real run logs."
-    : "実行時間は仮定値（軽量3分／標準8分／重量25分）であり実測ではない。実ログが取れ次第置き換えること。"}</div>`;
+    ? "Runtime comes from each Routine's own last run (fired_at → finished_at) where one was recorded; the rest fall back to the class assumption and say so."
+    : "実行時間は各 Routine の直近実行（fired_at→finished_at）の実測値。記録が無い行だけクラス仮定にフォールバックし、その旨を表示する。"}</div>`;
 }
 
 /* ---------- 10. RENDER: MIGRATION ---------- */
@@ -1304,6 +1315,8 @@ function buildExport(kind){
     L.push("| 台帳生成 | " + new Date().toISOString() + " |");
     L.push("| 登録タスク | " + TASKS.length + " 本（有効 " + on.length + "） |");
     L.push("| 時刻 実測 / 未確認 | " + TASKS.filter(t=>t.conf).length + " / " + TASKS.filter(t=>!t.conf).length + " 本 |");
+    L.push("| 出典 | claude.ai Routines API（list_triggers）の cron_expression を JST 換算 |");
+    L.push("| 実行時間 実測 / 仮定 | " + TASKS.filter(runMeasured).length + " / " + TASKS.filter(t=>!runMeasured(t)).length + " 本 |");
     L.push("| Desktop 依存（単一障害点） | " + on.filter(t=>t.tier==="L4").length + " 本 |");
     L.push("| ローカル実行 | " + on.filter(t=>t.runner==="agentzero").length + " / " + on.length + " 本 |");
     L.push("| 同時実行ピーク / 上限 | " + peak + " / " + state.conc + " 本 |");
@@ -1315,13 +1328,13 @@ function buildExport(kind){
     L.push("|---|---|---|---|---|---|---|---|---|---|---|");
     all().forEach((t,i) => L.push("| " + (i+1) + " | " + t.ja + " | " + whenStr(t) + " | `" + cronOf(t) + "` | " +
       (t.conf ? "実測" : "**未確認/提案**") + " | " + t.tier + " | " + RUNNERS[t.runner].ja + " | " + t.wave + " | " +
-      WEIGHTS[t.weight].min + " | " + (t.gates.map(g=>GATES[g].ja).join("・") || "—") + " | " + (t.deps.join(", ") || "—") + " |"));
+      runMin(t) + (runMeasured(t) ? "" : "(仮)") + " | " + (t.gates.map(g=>GATES[g].ja).join("・") || "—") + " | " + (t.deps.join(", ") || "—") + " |"));
     L.push("");
     L.push("## 3. 未確認（埋めるまで自動実行しない）");
     L.push("");
     all().filter(t=>!t.conf).forEach(t => L.push("- [ ] **" + t.ja + "** — claude.ai 上の実際の起動時刻（現在の提案値: " + whenStr(t) + "）"));
-    L.push("- [ ] ウェーブ割付と依存エッジは名称からの推定。実定義と突き合わせる");
-    L.push("- [ ] 想定実行時間（軽量3分/標準8分/重量25分）は仮定値。実ログで置き換える");
+    L.push("- [ ] ウェーブ割付と依存エッジは名称・プロンプトからの推定。実運用で確認する");
+    all().filter(t=>!runMeasured(t)).forEach(t => L.push("- [ ] **" + t.ja + "** — 実行時間の実測が無い（未実行、または常駐セッションへの配信待ちを含む異常値のため不採用）"));
     L.push("- [ ] Ollama のモデル名（巡回結果から選び、n8n 出力の PUT-YOUR-OLLAMA-MODEL-HERE を置換）");
     L.push("");
     L.push("## 4. USER GATE（自動実行を許さない操作）");
