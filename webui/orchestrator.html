@@ -492,10 +492,11 @@ footer{max-width:1220px;margin:0 auto;padding:22px 16px 40px;color:var(--ink3);f
         <label class="fld" style="flex:1 1 220px"><span class="ja">ブランチ</span><span class="en">Branch</span>
           <input type="text" id="envBranch" spellcheck="false"></label>
       </div>
-      <div class="note info" style="margin-top:12px">
-        <span class="ja"><b>ポートは推測しない。</b> agent-zero は <code class="mono">--port</code> 引数 → <code class="mono">.env</code> の <code class="mono">WEB_UI_PORT</code> の順で解決する（runtime.py:132）。ブロック2が実機の <code class="mono">.env</code> と待受ポートを読み、実測値で URL を組み立てる。上の欄は控えとして使う。</span>
-        <span class="en"><b>Never guess the port.</b> agent-zero resolves it from <code class="mono">--port</code>, then <code class="mono">WEB_UI_PORT</code> in <code class="mono">.env</code> (runtime.py:132). Block 2 reads the real <code class="mono">.env</code> and the listening socket and builds the URL from what it finds; the field above is only a fallback.</span>
+      <div class="row" style="margin-top:12px;gap:8px;align-items:center">
+        <span style="font-size:11.5px;color:var(--ink2)"><span class="ja">実行モード</span><span class="en">Run mode</span></span>
+        <div class="chipbar" id="modePicker"></div>
       </div>
+      <div id="modeNote" style="margin-top:12px"></div>
     </div>
   </div>
   <div class="sec" id="runbook"></div>
@@ -663,7 +664,7 @@ const DEFAULTS = {
   conc:2, step:10,
   cost:{pin:"", pout:"", fx:"", tl:8000, tm:30000, th:120000},
   filters:{freq:"all", tier:"all", flag:"all"}, q:"",
-  env:{repo:"C:\\agent-zero", host:"127.0.0.1", port:"50001", branch:"claude/task-automation-dashboard-gvoy32"},
+  env:{mode:"docker", repo:"C:\\agent-zero", host:"127.0.0.1", port:"50080", branch:"claude/task-automation-dashboard-gvoy32"},
   sort:{key:"time", dir:1}, exportKind:"tasks"
 };
 let state = structuredClone(DEFAULTS);
@@ -1376,8 +1377,8 @@ const DOCTRINE = [
    en:["No personal data in plaintext logs","Mask personal data before logging sweep results — the floor for APPI / GDPR / CCPA compliance."]},
   {ja:["静的配信の前提を理解する","webui/ 配下は認証なしで配信される。本ファイルに秘密情報を書かない。公開ポートに晒さない。"],
    en:["Know how this file is served","Everything under webui/ is served without auth. Keep secrets out of this file and off public ports."]},
-  {ja:["tick は認証なし・ループバック限定","/scheduler_tick は requires_auth=False・requires_loopback=True（run_ui.py:189, scheduler_tick.py）。127.0.0.1 以外からは 403。ポートを外部に晒すと保護はこの1行だけになる。"],
-   en:["The tick endpoint is unauthenticated and loopback-bound","/scheduler_tick sets requires_auth=False and requires_loopback=True (run_ui.py:189, scheduler_tick.py). Anything but 127.0.0.1 gets 403 — that single check is the only thing protecting it if the port is exposed."]}
+  {ja:["tick は認証なし・ループバック限定","/scheduler_tick は requires_auth=False・requires_loopback=True（run_ui.py:189, scheduler_tick.py）。127.0.0.1 以外からは 403。Docker で動かすとホストからの要求はブリッジのゲートウェイ経由になるため、この tick も 403 になる見込み（実機未確認）。内蔵スケジューラは自前で回るので実害はない。ポートを外部に晒すと保護はこの1行だけになる。"],
+   en:["The tick endpoint is unauthenticated and loopback-bound","/scheduler_tick sets requires_auth=False and requires_loopback=True (run_ui.py:189, scheduler_tick.py). Anything but 127.0.0.1 gets 403 — under Docker a request from the host arrives via the bridge gateway, so tick is expected to 403 there too (not verified on a real host). The built-in scheduler ticks on its own, so nothing is lost. If the port is exposed, that single check is the only thing protecting it."]}
 ];
 function renderDoctrine(){
   $("#doctrine").innerHTML = DOCTRINE.map(d => {
@@ -1564,7 +1565,7 @@ function psFill(code){
     .split("@@BRANCH@@").join(e.branch);
 }
 const RUNBOOK = [
- {id:"rb0", gate:false,
+ {id:"rb0", m:"both", ord:0, gate:false,
   tJa:"0. 前提の実測", tEn:"0. Measure the prerequisites",
   wJa:"何も変更しない。python / git / docker が入っているかを見るだけ。",
   wEn:"Changes nothing — just reports whether python, git and docker are present.",
@@ -1576,7 +1577,7 @@ foreach ($c in 'python','git','docker') {
 }
 "PSVersion  " + $PSVersionTable.PSVersion.ToString()`},
 
- {id:"rb1", gate:false,
+ {id:"rb1", m:"both", ord:2, gate:false,
   tJa:"1. 司令塔を取得する", tEn:"1. Fetch the deck",
   wJa:"リポジトリを取得／更新し、対象ブランチに切り替える。作業ツリーに未コミットの変更があれば git が止める。",
   wEn:"Clones or updates the repository and checks out the branch. git stops if the working tree has uncommitted changes.",
@@ -1592,7 +1593,7 @@ git pull origin $Branch
 Get-Item (Join-Path $Repo 'webui\orchestrator.html') |
   Select-Object FullName, Length, LastWriteTime`},
 
- {id:"rb2", gate:false,
+ {id:"rb2", m:"local", ord:4, gate:false,
   tJa:"2. ポートを実測して開く", tEn:"2. Measure the port, then open",
   wJa:"読むだけ。.env の WEB_UI_PORT と実際の待受を確認し、実測値で URL を作ってブラウザを開く。待受が無ければ起動コマンドを表示する。",
   wEn:"Read-only. Reads WEB_UI_PORT from .env, checks what is actually listening, builds the URL from that and opens it. If nothing is listening it prints the start command instead.",
@@ -1615,7 +1616,7 @@ if (-not $listen) {
   Start-Process $url
 }`},
 
- {id:"rb3", gate:false,
+ {id:"rb3", m:"both", ord:5, gate:false,
   tJa:"3. 投入前プリフライト", tEn:"3. Preflight the export",
   wJa:"読むだけ。移行タブでコピーした tasks.json を保存したファイルを検査する。1件でも問題があれば止まる。",
   wEn:"Read-only. Checks the tasks.json you copied from the Migration tab and saved. Stops if anything fails.",
@@ -1645,7 +1646,7 @@ if ($raw.Length -gt 0 -and [int]$raw[0] -eq 65279) { $errs.Add('先頭に BOM �
 if ($errs.Count) { $errs | ForEach-Object { "NG  " + $_ }; throw ("" + $errs.Count + " 件。投入しないこと。") }
 "OK  " + $data.tasks.Count + " 件、検査通過"`},
 
- {id:"rb4", gate:true,
+ {id:"rb4", m:"both", ord:6, gate:true,
   tJa:"4. バックアップしてから投入", tEn:"4. Back up, then apply",
   wJa:"既存の tmp/scheduler/tasks.json を退避してから置き換える。BOM を付けずに書く（read_file は utf-8 固定・BOM を剥がさない / files.py:85-95）。",
   wEn:"Moves the existing tmp/scheduler/tasks.json aside, then replaces it. Written without a BOM — read_file opens with plain utf-8 and does not strip one (files.py:85-95).",
@@ -1673,7 +1674,7 @@ $check.tasks | Select-Object name,
   @{n='cron';e={ "" + $_.schedule.minute + " " + $_.schedule.hour + " * * " + $_.schedule.weekday }} |
   Format-Table -AutoSize`},
 
- {id:"rb5", gate:true,
+ {id:"rb5", m:"both", ord:7, gate:true,
   tJa:"5. 直前の状態へ戻す", tEn:"5. Roll back",
   wJa:"最新のバックアップで tasks.json を上書きする。ブロック4を実行した直後にしか意味がない。",
   wEn:"Overwrites tasks.json from the newest backup. Only meaningful right after block 4.",
@@ -1684,7 +1685,7 @@ if (-not $bak) { throw 'バックアップが無い' }
 Copy-Item $bak.FullName $Dst -Force
 "restored from " + $bak.Name`},
 
- {id:"rb6", gate:true,
+ {id:"rb6", m:"local", ord:8, gate:true,
   tJa:"6. 常駐化と自己修復", tEn:"6. Keep it running, and healing",
   wJa:"管理者権限が要る。ログオン時に agent-zero を起動するタスクと、5分ごとに応答を見て落ちていれば起こし直すタスクを登録する。Basic 認証の 401 は「生きている」と判定する。",
   wEn:"Needs an elevated shell. Registers one task that starts agent-zero at logon and one that checks every five minutes and restarts it if it stopped answering. A 401 from basic auth counts as alive.",
@@ -1724,16 +1725,100 @@ $hTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(5) -Repetit
 Register-ScheduledTask -TaskName 'agent-zero health probe' -Action $hAction -Trigger $hTrigger -Force |
   Select-Object TaskName, State`},
 
- {id:"rb7", gate:true, human:true,
+ {id:"rb7", m:"both", ord:9, gate:true, human:true,
   tJa:"7. claude.ai 側を止める（人手）", tEn:"7. Switch the cloud side off (by hand)",
   wJa:"PowerShell では到達できない。並走で差分が出なくなった行だけ、claude.ai のスケジュール済みタスクを開いて無効化する。削除しない — 戻せなくなる。",
   wEn:"Out of PowerShell's reach. For each row whose parallel run stopped showing a diff, open the scheduled task on claude.ai and disable it. Do not delete — deletion cannot be undone.",
-  code:null}
+  code:null},
+
+ {id:"rb0d", m:"docker", ord:1, gate:true,
+  tJa:"0b. Docker Desktop を入れる", tEn:"0b. Install Docker Desktop",
+  wJa:"ソフトを追加する。管理者権限・数GBの空き・初回は再起動が要る。企業利用のライセンス条件（従業員数・売上規模）は Docker 社の規約で要確認。",
+  wEn:"Installs software. Needs admin rights, several GB free and usually one reboot. Check Docker's own subscription terms for company use.",
+  code:String.raw`# 管理者として開いたターミナルで実行する
+winget install -e --id Docker.DockerDesktop
+# 入ったら Docker Desktop を一度起動し、鯨アイコンが "Running" になるまで待つ
+docker version`},
+
+ {id:"rb1d", m:"docker", ord:3, gate:false,
+  tJa:"1b. イメージを取得する", tEn:"1b. Pull the image",
+  wJa:"公式イメージを落とすだけ。数GBある。回線しだいで数分かかる。",
+  wEn:"Only downloads the official image. It is several GB and can take a few minutes.",
+  code:String.raw`docker pull frdel/agent-zero-run
+docker images frdel/agent-zero-run`},
+
+ {id:"rb2d", m:"docker", ord:4, gate:true,
+  tJa:"2. コンテナを起動して開く", tEn:"2. Start the container, then open",
+  wJa:"コンテナを作って常駐させ、実測したポートで司令塔を開く。クローンを /a0 にマウントするので、この画面もコンテナから配信される。初回起動は準備処理で数分かかる。",
+  wEn:"Creates the container, keeps it running, and opens the deck on the port it actually mapped. The clone is mounted at /a0, so this page is served from the container. The first boot takes a few minutes.",
+  code:String.raw`$Repo = '@@REPO@@'
+$Port = '@@PORT@@'          # ホスト側のポート。コンテナ内は 80 固定（run_A0.sh）
+$Map  = $Port + ':80'
+$Mnt  = $Repo + ':/a0'
+
+if (docker ps -q --filter name=agent-zero) {
+  'already running'
+} elseif (docker ps -aq --filter name=agent-zero) {
+  docker start agent-zero
+} else {
+  docker run -d --name agent-zero --restart unless-stopped -p $Map -v $Mnt frdel/agent-zero-run
+}
+docker ps --filter name=agent-zero --format 'NAME={{.Names}}  STATUS={{.Status}}  PORTS={{.Ports}}'
+
+$url = 'http://@@HOST@@:' + $Port + '/orchestrator.html'
+foreach ($i in 1..30) {
+  Start-Sleep -Seconds 10
+  try {
+    $r = Invoke-WebRequest -Uri $url -TimeoutSec 5 -UseBasicParsing
+    'HTTP ' + $r.StatusCode + ' — 準備できた'
+    break
+  } catch {
+    $sc = $null
+    if ($_.Exception.Response) { $sc = [int]$_.Exception.Response.StatusCode }
+    if ($sc -eq 401 -or $sc -eq 403) { 'HTTP ' + $sc + ' — 起動済み（認証が返っている）'; break }
+    '待機中 ' + ($i * 10) + '秒 … docker logs agent-zero --tail 30 で進行を見られる'
+  }
+}
+Start-Process $url`},
+
+ {id:"rb6d", m:"docker", ord:8, gate:true,
+  tJa:"6. 落ちても戻す（Docker）", tEn:"6. Bring it back when it falls over (Docker)",
+  wJa:"常駐そのものは起動時の --restart unless-stopped が担う。ここでは応答が無いときだけ再起動する見張りを15分おきに登録する。タスク登録には管理者権限が要る。",
+  wEn:"Staying up is already handled by --restart unless-stopped at run time. This registers a watcher that restarts the container only when it stops answering, every 15 minutes. Registering the task needs admin rights.",
+  code:String.raw`$Port  = '@@PORT@@'
+$Probe = 'try { Invoke-WebRequest -Uri http://127.0.0.1:' + $Port + '/ -TimeoutSec 8 -UseBasicParsing | Out-Null } catch { $c=$null; if ($_.Exception.Response) { $c=[int]$_.Exception.Response.StatusCode }; if ($c -ne 401 -and $c -ne 403) { docker restart agent-zero } }'
+
+$act = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -WindowStyle Hidden -Command "' + $Probe.Replace('"','\"') + '"')
+$trg = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 15)
+Register-ScheduledTask -TaskName 'agent-zero-health' -Action $act -Trigger $trg -Description 'restart agent-zero when it stops answering' -Force
+Get-ScheduledTask -TaskName 'agent-zero-health' | Select-Object TaskName, State`}
 ];
+const MODES = {
+  docker:{ja:"Docker", en:"Docker"},
+  local:{ja:"ローカル実行", en:"Local Python"}
+};
+function renderModePanel(){
+  const en = currentLang==="en";
+  $("#modePicker").innerHTML = Object.keys(MODES).map(k =>
+    `<button class="chip" data-mode="${k}" aria-pressed="${state.env.mode===k}">${MODES[k][currentLang]}</button>`).join("");
+  $("#modePicker").querySelectorAll(".chip").forEach(c => c.onclick = () => {
+    state.env.mode = c.dataset.mode;
+    if(state.env.port==="50001" && c.dataset.mode==="docker") state.env.port = "50080";
+    save(); renderRunbook(); $("#envPort").value = state.env.port;
+  });
+  $("#modeNote").innerHTML = state.env.mode==="docker" ? `<div class="note info">
+    <span class="ja"><b>Docker の実測:</b> コンテナ内の Web UI は <code class="mono">--port=80</code> 固定で起動する（<code class="mono">docker/run/fs/exe/run_A0.sh</code>）。ホスト側のポートは <code class="mono">-p</code> のマッピングだけで決まり、<code class="mono">.env</code> の <code class="mono">WEB_UI_PORT</code> は効かない。クローンを <code class="mono">/a0</code> にマウントすれば既存ファイルは上書きされず（<code class="mono">copy_A0.sh</code> は <code class="mono">cp -rn</code>）、この司令塔もそのまま配信される。ブロック3〜5が触るパスはホスト側フォルダ＝コンテナの <code class="mono">/a0</code> なので共通。</span>
+    <span class="en"><b>Measured Docker behaviour:</b> inside the container the web UI starts with a fixed <code class="mono">--port=80</code> (<code class="mono">docker/run/fs/exe/run_A0.sh</code>). The host port comes only from the <code class="mono">-p</code> mapping — <code class="mono">WEB_UI_PORT</code> in <code class="mono">.env</code> has no effect. Mounting the clone at <code class="mono">/a0</code> keeps your files (<code class="mono">copy_A0.sh</code> uses <code class="mono">cp -rn</code>) and serves this deck from the container. Blocks 3–5 touch the same host folder, which is the container's <code class="mono">/a0</code>.</span></div>` : `<div class="note">
+    <span class="ja"><b>ローカル実行の注意:</b> リポジトリの手順書は <b>Python 3.12</b> 前提（<code class="mono">docs/installation.md:432</code>）。<code class="mono">requirements.txt</code> は faiss-cpu 1.11.0・sentence-transformers 3.0.1・openai-whisper など固定版を含むため、新しすぎる Python ではビルド済みパッケージが無く失敗しうる。ポートは <code class="mono">--port</code> → <code class="mono">.env</code> の <code class="mono">WEB_UI_PORT</code> の順で解決される（<code class="mono">runtime.py:132</code>）ので、ブロック2が実機を読んで実測値で URL を作る。</span>
+    <span class="en"><b>Local-run caveat:</b> the repository's own guide assumes <b>Python 3.12</b> (<code class="mono">docs/installation.md:432</code>). <code class="mono">requirements.txt</code> pins faiss-cpu 1.11.0, sentence-transformers 3.0.1, openai-whisper and others, so a much newer Python may have no prebuilt wheels and fail to install. The port resolves from <code class="mono">--port</code>, then <code class="mono">WEB_UI_PORT</code> in <code class="mono">.env</code> (<code class="mono">runtime.py:132</code>), which is what block 2 reads.</span></div>`;
+}
 function renderRunbook(){
   const en = currentLang==="en";
+  renderModePanel();
   const box = $("#runbook"); box.innerHTML = "";
-  RUNBOOK.forEach(b => {
+  RUNBOOK.filter(b => b.m==="both" || b.m===state.env.mode)
+         .sort((a,b) => a.ord-b.ord)
+         .forEach(b => {
     const card = el("div","panel");
     card.style.marginBottom = "12px";
     const gate = b.gate ? `<span class="badge crit">${en?"USER GATE":"USER GATE"}</span>` : "";
