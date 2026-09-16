@@ -291,6 +291,7 @@ footer{max-width:1220px;margin:0 auto;padding:22px 16px 40px;color:var(--ink3);f
         <span class="badge" id="originChip">origin</span>
         <button class="btn ghost" id="btnPull"><span class="ja">タスク一覧を取得</span><span class="en">Fetch task list</span></button>
         <button class="btn ghost" id="btnTick" disabled><span class="ja">スケジューラを1回叩く</span><span class="en">Run scheduler tick</span></button>
+        <span class="badge warn"><span class="ja">tick は 127.0.0.1 からのみ</span><span class="en">tick: loopback only</span></span>
       </div>
       <div id="liveOut"></div>
       <div class="note info" style="margin-top:10px">
@@ -641,7 +642,15 @@ let live = {ok:false, token:null, tasks:null};
 function load(){
   try{
     const raw = localStorage.getItem(KEY);
-    if(raw) state = Object.assign(structuredClone(DEFAULTS), JSON.parse(raw));
+    if(raw){
+      const saved = JSON.parse(raw), base = structuredClone(DEFAULTS);
+      for(const k of Object.keys(saved)){
+        const d = base[k], v = saved[k];
+        base[k] = (d && typeof d==="object" && !Array.isArray(d) && v && typeof v==="object" && !Array.isArray(v))
+          ? Object.assign({}, d, v) : v;
+      }
+      state = base;
+    }
   }catch(e){ /* private window / blocked storage — run with defaults */ }
 }
 function save(){
@@ -1304,7 +1313,9 @@ const DOCTRINE = [
   {ja:["個人情報を平文ログに残さない","巡回結果に含まれる個人情報はログ前にマスクする。APPI/GDPR/CCPA 準拠の最低線。"],
    en:["No personal data in plaintext logs","Mask personal data before logging sweep results — the floor for APPI / GDPR / CCPA compliance."]},
   {ja:["静的配信の前提を理解する","webui/ 配下は認証なしで配信される。本ファイルに秘密情報を書かない。公開ポートに晒さない。"],
-   en:["Know how this file is served","Everything under webui/ is served without auth. Keep secrets out of this file and off public ports."]}
+   en:["Know how this file is served","Everything under webui/ is served without auth. Keep secrets out of this file and off public ports."]},
+  {ja:["tick は認証なし・ループバック限定","/scheduler_tick は requires_auth=False・requires_loopback=True（run_ui.py:189, scheduler_tick.py）。127.0.0.1 以外からは 403。ポートを外部に晒すと保護はこの1行だけになる。"],
+   en:["The tick endpoint is unauthenticated and loopback-bound","/scheduler_tick sets requires_auth=False and requires_loopback=True (run_ui.py:189, scheduler_tick.py). Anything but 127.0.0.1 gets 403 — that single check is the only thing protecting it if the port is exposed."]}
 ];
 function renderDoctrine(){
   $("#doctrine").innerHTML = DOCTRINE.map(d => {
@@ -1416,7 +1427,11 @@ async function api(path, body){
   const res = await fetch(path, {method:"POST", credentials:"same-origin",
     headers:{"Content-Type":"application/json", "X-CSRF-Token":live.token},
     body: JSON.stringify(Object.assign({timezone:"Asia/Tokyo"}, body||{}))});
-  if(res.status===403){ live.token = null; throw new Error("csrf rejected (403)"); }
+  if(res.status===403){
+    const body = (await res.text()).slice(0,120);
+    if(/csrf/i.test(body)){ live.token = null; throw new Error("CSRF 403 — " + body); }
+    throw new Error("403 — " + body);   // e.g. /scheduler_tick is loopback-only
+  }
   if(!res.ok) throw new Error(path + " → " + res.status);
   return res.json();
 }
