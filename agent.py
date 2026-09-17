@@ -11,7 +11,7 @@ from enum import Enum
 import uuid
 import models
 
-from python.helpers import extract_tools, files, errors, history, tokens
+from python.helpers import extract_tools, files, errors, guardrail, history, tokens
 from python.helpers import dirty_json
 from python.helpers.print_style import PrintStyle
 from langchain_core.prompts import (
@@ -731,6 +731,31 @@ class Agent:
             # Split raw_tool_name into tool_name and tool_method if applicable
             if ":" in raw_tool_name:
                 tool_name, tool_method = raw_tool_name.split(":", 1)
+
+            # compliance guardrail: screen the outbound payload before the
+            # tool is constructed, so a blocked call never reaches the network
+            verdict = guardrail.screen_tool_call(
+                agent=self, tool_name=tool_name, args=tool_args, message=msg
+            )
+            if verdict.blocked:
+                self.hist_add_warning(verdict.notice)
+                PrintStyle(font_color="red", padding=True).print(verdict.notice)
+                self.context.log.log(
+                    type="warning",
+                    heading=f"{self.agent_name}: Guardrail blocked '{raw_tool_name}'",
+                    content=verdict.notice,
+                )
+                return
+            if verdict.action == "redact":
+                tool_args = verdict.args
+                msg = verdict.payload_message
+                self.hist_add_warning(verdict.notice)
+                PrintStyle(font_color="orange", padding=True).print(verdict.notice)
+                self.context.log.log(
+                    type="warning",
+                    heading=f"{self.agent_name}: Guardrail redacted '{raw_tool_name}'",
+                    content=verdict.notice,
+                )
 
             tool = None  # Initialize tool to None
 

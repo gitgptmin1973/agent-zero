@@ -1,0 +1,35 @@
+{
+  "_comment": "Copy to conf/guardrail.json to override the defaults. Every field is optional.",
+  "_mode": "enforce = block critical + redact high | redact = mask everything | audit = log only | off = disabled. The A0_GUARDRAIL_MODE env var wins over this file.",
+  "mode": "enforce",
+  "block_severity": "critical",
+  "redact_severity": "high",
+  "approval_ttl_seconds": 1800,
+  "_allowlist": "literal strings that must never be flagged, e.g. a published company contact address",
+  "allowlist": [],
+  "_disabled_detectors": "detector keys to switch off, e.g. [\"postal_jp\"]",
+  "disabled_detectors": [],
+  "_tools": "tool names by egress class; unknown tools and MCP tools (server.tool) default to network",
+  "skip_tools": ["response", "task_done", "input"],
+  "local_tools": [
+    "call_subordinate",
+    "memory_save",
+    "memory_load",
+    "memory_delete",
+    "memory_forget",
+    "behaviour_adjustment",
+    "scheduler",
+    "vision_load",
+    "unknown"
+  ],
+  "local_exec_tools": ["code_execution_tool"],
+  "network_tools": [
+    "knowledge_tool",
+    "search_engine",
+    "webpage_content_tool",
+    "browser_agent",
+    "browser",
+    "document_query"
+  ],
+  "audit": true
+}
