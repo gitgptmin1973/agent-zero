@@ -1,0 +1,1 @@
+Agent Zero marks, copied verbatim from `webui/public/`. `favicon.svg` and `favicon_round.svg` are white on navy `rgb(1,4,26)` and work on any ground. `darkSymbol.svg` is single-ink `currentColor`: as an `<img>` its ink is black, so use it on light grounds or inline it. `splash.jpg` (680×680) is the header logo.

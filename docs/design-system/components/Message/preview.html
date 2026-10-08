@@ -1,0 +1,13 @@
+<!-- @dsCard group="Chat" height=560 -->
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Message</title></head>
+<body>
+<div class="a0-col">
+  <div class="a0-msg a0-msg-user">Find the three largest files in /tmp<div class="a0-msg-meta">notes.txt</div></div>
+  <div class="a0-msg a0-msg-ai a0-msg-agent"><div class="a0-msg-head">A0: Generating…</div><h4>Listing /tmp by size</h4>
+    <table class="a0-kvps"><tr><th>thoughts</th><td>Use du and sort, keep the top three.</td></tr><tr><th>tool</th><td>code_execution_tool</td></tr></table></div>
+  <div class="a0-msg a0-msg-ai a0-msg-code"><div class="a0-msg-head">A0: Using tool 'code_execution_tool'</div><pre class="a0-pre">du -ah /tmp | sort -rh | head -n 3</pre></div>
+  <div class="a0-msg a0-msg-ai a0-msg-response"><div class="a0-msg-head">A0: Responding</div>The largest are cache.db (1.2 GB), build.log (310 MB) and core.4411 (96 MB).</div>
+  <div class="a0-row"><div class="a0-msg a0-msg-ai a0-msg-tool">Tool: search_engine</div><div class="a0-msg a0-msg-ai a0-msg-delegation">Delegating to A1</div><div class="a0-msg a0-msg-ai a0-msg-info">Chat restored</div><div class="a0-msg a0-msg-ai a0-msg-warning">Rate limit, retrying in 5s</div><div class="a0-msg a0-msg-ai a0-msg-error">Tool failed: timeout</div></div>
+</div>
+</body></html>
